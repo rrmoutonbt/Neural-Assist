@@ -11,6 +11,7 @@ import { showModal, closeModal, getModalContent } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { formatCurrency, formatPercent } from '../utils/formatters.js';
 import { PAIRS, PAIR_BASE_PRICES, PAPER_KEY } from '../utils/constants.js';
+import { render as renderChartView } from './chartView.js?v=5';
 
 const STARTING_BALANCE = 100000;
 const MARGIN_STARTING_BALANCE = 50000;
@@ -289,14 +290,9 @@ export async function render(container) {
 
   let ps = loadPaperState();
   let selectedPair = PAIRS[0];
-  let priceHistoryCache = {};
   let bottomTab = 'positions';
   let orderWidgetCollapsed = false;
-
-  function getPriceHistory(pair) {
-    if (!priceHistoryCache[pair]) priceHistoryCache[pair] = generatePriceHistory(pair);
-    return priceHistoryCache[pair];
-  }
+  let chartCleanup = null;
 
   function getTotalEquity() {
     let v = 0;
@@ -315,7 +311,7 @@ export async function render(container) {
     return pnl;
   }
 
-  function renderView() {
+  function renderTradingPanel() {
     const isMargin = ps.activeTab === 'margin';
     const equity = isMargin ? calcMarginEquity(ps.marginAccount) : getTotalEquity();
     const balance = isMargin ? ps.marginAccount.balance : ps.balance;
@@ -325,204 +321,102 @@ export async function render(container) {
     const usedMargin = isMargin ? calcUsedMargin(ps.marginAccount) : 0;
     const marginAvail = isMargin ? Math.max(0, equity - usedMargin) : balance;
     const marginLevel = isMargin ? calcMarginLevel(ps.marginAccount) : Infinity;
-    const lastBar = getPriceHistory(selectedPair).slice(-1)[0];
-    const curPrice = lastBar ? lastBar.close : 0;
-
+    // Build the trading panel overlay HTML
+    const curPrice = getMockPrice(selectedPair);
     const spread = curPrice * 0.0003;
     const sellPrice = curPrice - spread;
     const buyPrice = curPrice + spread;
     const orderQty = 1000;
     const initMargin = isMargin ? `~${formatCurrency(orderQty / 3)}` : `~${formatCurrency(orderQty)}`;
-    const ohlcColor = lastBar && lastBar.close >= lastBar.open ? BULL : BEAR;
     const now = new Date();
     const timestamp = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} UTC`;
     const widgetCollapsed = orderWidgetCollapsed;
 
-    container.innerHTML = `
-      <div class="pt-terminal" style="display:flex;flex-direction:column;height:calc(100vh - 56px);background:${BG};color:${TEXT};font-family:Inter,sans-serif;overflow:hidden;margin:-24px -32px -24px -32px">
+    const tradingOverlay = document.getElementById('pt-trading-overlay');
+    if (!tradingOverlay) return;
 
-        <!-- Top Toolbar -->
-        <div style="display:flex;align-items:center;gap:12px;padding:5px 12px;background:#1e222d;border-bottom:1px solid #2a2e39;flex-shrink:0;min-height:38px">
-          <select id="pt-pair-select" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:4px 8px;font-size:13px;font-weight:600;cursor:pointer;outline:none">
-            ${PAIRS.map(p => `<option value="${p}" ${p === selectedPair ? 'selected' : ''}>${p}</option>`).join('')}
-          </select>
-          <div style="width:1px;height:18px;background:#363a45"></div>
-          <div style="display:flex;gap:2px">
-            ${['1m','5m','15m','1h','4h','1D'].map((tf, i) => `<button class="pt-tf-btn ${i === 3 ? 'active' : ''}" data-tf="${tf}" style="padding:3px 9px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${i === 3 ? 'background:#2962ff;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">${tf}</button>`).join('')}
-          </div>
-          <div style="width:1px;height:18px;background:#363a45"></div>
-          <span style="font-size:12px;color:${TEXT_DIM}">●</span><span style="font-size:12px;color:#26a69a;font-weight:500">Trading Open</span>
-          <div style="width:1px;height:18px;background:#363a45"></div>
-          <span style="font-size:11px;color:${TEXT_DIM}">↶ ↷</span>
+    tradingOverlay.innerHTML = `
+      <!-- Account Metrics Bar + Positions Tabs -->
+      <div style="display:flex;align-items:center;background:#1e222d;border-top:1px solid #2a2e39;flex-shrink:0;padding:0 12px;min-height:36px;font-size:11px">
+        <button class="pt-panel-tab ${bottomTab === 'positions' ? 'active' : ''}" data-panel="positions" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'positions' ? '#2962ff' : 'transparent'};color:${bottomTab === 'positions' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
+          Positions <span style="background:${positions.length > 0 ? '#2962ff' : '#363a45'};color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">${positions.length}</span>
+        </button>
+        <button class="pt-panel-tab" data-panel="pending" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid transparent;color:${TEXT_DIM};background:transparent;margin-right:4px">
+          Pending <span style="background:#363a45;color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">0</span>
+        </button>
+        <button class="pt-panel-tab ${bottomTab === 'closed' ? 'active' : ''}" data-panel="closed" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'closed' ? '#2962ff' : 'transparent'};color:${bottomTab === 'closed' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
+          Closed Positions
+        </button>
+        <span style="color:${TEXT_DIM};padding:0 8px">›</span>
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:16px;align-items:center">
+          <div><span style="color:${TEXT_DIM}">BALANCE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(balance)}</span></div>
+          <div><span style="color:${TEXT_DIM}">PROFIT & LOSS</span> <span class="font-mono" style="color:${pnl >= 0 ? BULL : BEAR};font-weight:600">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</span></div>
+          <div><span style="color:${TEXT_DIM}">EQUITY</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(equity)}</span></div>
+          ${isMargin ? `
+          <div><span style="color:${TEXT_DIM}">MARGIN USED</span> <span class="font-mono" style="color:#ff9800;font-weight:600">${formatCurrency(usedMargin)}</span></div>
+          <div><span style="color:${TEXT_DIM}">MARGIN AVAILABLE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(marginAvail)}</span></div>
+          <div><span style="color:${TEXT_DIM}">MARGIN LEVEL ⓘ</span> <span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '---' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
+          ` : ''}
+        </div>
+        <button id="pt-close-all-btn" style="background:#363a45;color:${TEXT};border:1px solid #4a4e59;border-radius:4px;padding:4px 14px;font-size:11px;cursor:pointer;font-weight:500;margin-left:12px;display:${positions.length > 0 ? 'block' : 'none'}">Close All ▾</button>
+      </div>
+
+      <!-- Positions Table -->
+      <div style="flex-shrink:0;max-height:180px;overflow-y:auto;background:${BG};font-size:12px">
+        ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : renderClosedTable(closedTrades, isMargin)}
+      </div>
+
+      <!-- Floating Order Widget -->
+      <div id="pt-order-widget" style="position:fixed;bottom:${240 + (positions.length > 0 ? 40 * Math.min(positions.length, 3) : 30)}px;left:50%;transform:translateX(-50%);background:#1e222dF0;backdrop-filter:blur(12px);border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:10;width:540px;overflow:hidden">
+        ${widgetCollapsed ? `
+        <div style="display:flex;align-items:center;padding:8px 16px;gap:10px">
+          <span style="font-size:13px;font-weight:700;color:${TEXT}">${selectedPair}</span>
+          <span style="font-size:11px;color:${TEXT_DIM}">MARKET</span>
           <div style="flex:1"></div>
-          <div style="display:flex;gap:2px;background:#2a2e39;border-radius:4px;padding:2px">
-            <button class="pt-acct-tab ${!isMargin ? 'active' : ''}" data-tab="cash" style="padding:3px 12px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${!isMargin ? 'background:#363a45;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Cash</button>
-            <button class="pt-acct-tab ${isMargin ? 'active' : ''}" data-tab="margin" style="padding:3px 12px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${isMargin ? 'background:#7b1fa2;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Margin</button>
-          </div>
-          <button id="pt-reset-btn" style="background:transparent;border:1px solid #363a45;color:${TEXT_DIM};border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer">Reset</button>
+          <span class="font-mono" style="font-size:12px;color:${BEAR}">${fmtPrice(sellPrice)}</span>
+          <span style="color:#363a45">/</span>
+          <span class="font-mono" style="font-size:12px;color:${BULL}">${fmtPrice(buyPrice)}</span>
+          <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌄</button>
         </div>
-
-        <!-- Main Content Area -->
-        <div style="flex:1;display:flex;min-height:0;position:relative">
-
-          <!-- Left Floating Toolbar -->
-          <div style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:6;display:flex;flex-direction:column;gap:2px;background:#1e222d;border:1px solid #2a2e39;border-radius:6px;padding:4px">
-            <button class="pt-tool-btn" title="Crosshair" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">+</button>
-            <button class="pt-tool-btn" title="Trend Line" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">╲</button>
-            <button class="pt-tool-btn" title="Horizontal Line" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">─</button>
-            <button class="pt-tool-btn" title="Rectangle" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">▢</button>
-            <button class="pt-tool-btn" title="Text" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center;font-weight:700">T</button>
-            <div style="height:1px;background:#2a2e39;margin:2px 4px"></div>
-            <div style="font-size:8px;color:#363a45;text-align:center;letter-spacing:0.5px;padding:2px 0">SPACES</div>
-            <button class="pt-tool-btn" title="Space 1" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:#2962ff22;color:#2962ff;font-size:13px;display:flex;align-items:center;justify-content:center">◉</button>
-            <button class="pt-tool-btn" title="Space 2" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center">◎</button>
-            <div style="height:1px;background:#2a2e39;margin:2px 4px"></div>
-            <div style="font-size:8px;color:#363a45;text-align:center;letter-spacing:0.5px;padding:2px 0">PANELS</div>
-            <button class="pt-tool-btn" title="Chart Panel" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⊞</button>
-            <button class="pt-tool-btn" title="Order Panel" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:#2962ff22;color:#2962ff;font-size:14px;display:flex;align-items:center;justify-content:center">⊟</button>
-            <button class="pt-tool-btn" title="Info" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">ⓘ</button>
-          </div>
-
-          <!-- Chart + OHLC -->
-          <div style="flex:1;position:relative;min-height:0">
-            <!-- OHLC Overlay -->
-            <div style="position:absolute;top:8px;left:52px;z-index:5;font-size:12px;pointer-events:none">
-              <div style="display:flex;gap:6px;align-items:center">
-                <span style="font-weight:700;color:${TEXT};font-size:13px">${selectedPair} · 1h</span>
-                <span style="color:${TEXT_DIM}">O</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.open) : '-'}</span>
-                <span style="color:${TEXT_DIM}">H</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.high) : '-'}</span>
-                <span style="color:${TEXT_DIM}">L</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.low) : '-'}</span>
-                <span style="color:${TEXT_DIM}">C</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.close) : '-'}</span>
-                <span style="color:${TEXT_DIM}">Vol</span><span style="color:${TEXT_DIM}">${lastBar ? lastBar.volume.toLocaleString() : '-'}</span>
-              </div>
-            </div>
-            <canvas id="pt-chart-canvas" style="width:100%;height:100%;display:block"></canvas>
-          </div>
-
-          <!-- Right Floating Sidebar -->
-          <div style="position:absolute;right:0;top:0;bottom:0;width:36px;z-index:6;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px;background:#1e222d;border-left:1px solid #2a2e39">
-            <button class="pt-tool-btn" title="Watchlist" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center">☰</button>
-            <button class="pt-tool-btn" title="Alerts" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⏰</button>
-            <button class="pt-tool-btn" title="Calendar" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">📅</button>
-            <div style="flex:1"></div>
-            <button class="pt-tool-btn" title="Settings" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⚙</button>
-          </div>
-
-        </div>
-
-        <!-- Bottom Timeframe Bar -->
-        <div style="display:flex;align-items:center;padding:3px 12px;background:#1e222d;border-top:1px solid #2a2e39;flex-shrink:0;min-height:26px;font-size:11px">
-          <button style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;padding:2px 4px;font-size:12px">›</button>
-          <div style="display:flex;gap:6px;margin-left:8px">
-            ${['1D','5D','1M','3M','1Y','5Y'].map(p => `<button class="pt-range-btn" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;padding:2px 6px;font-size:11px;font-weight:500">${p}</button>`).join('')}
-            <span style="color:${TEXT_DIM};padding:2px 6px">Go to</span>
+        ` : `
+        <div style="display:flex;align-items:center;padding:8px 14px;gap:8px;border-bottom:1px solid #2a2e39">
+          <span style="font-size:14px;font-weight:700;color:${TEXT}">${selectedPair}</span>
+          <div style="display:flex;gap:0;margin-left:6px">
+            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px 0 0 4px;cursor:pointer;background:#363a45;color:#fff">MARKET ⟲</button>
+            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-left:none;border-radius:0 4px 4px 0;cursor:pointer;background:transparent;color:${TEXT_DIM}">PENDING</button>
           </div>
           <div style="flex:1"></div>
-          <span style="color:${TEXT_DIM};font-weight:500">${timestamp}</span>
-          <div style="display:flex;gap:8px;margin-left:16px">
-            <span style="color:${TEXT_DIM};cursor:pointer">%</span>
-            <span style="color:${TEXT_DIM};cursor:pointer">log</span>
-            <span style="color:${TEXT_DIM};cursor:pointer;font-weight:600">auto</span>
-          </div>
+          <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
+          <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
+          <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
+          <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌃</button>
         </div>
-
-        <!-- Account Metrics Bar + Positions Tabs -->
-        <div style="display:flex;align-items:center;background:#1e222d;border-top:1px solid #2a2e39;flex-shrink:0;padding:0 12px;min-height:36px;font-size:11px">
-          <!-- Panel Tabs -->
-          <button class="pt-panel-tab ${bottomTab === 'positions' ? 'active' : ''}" data-panel="positions" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'positions' ? '#2962ff' : 'transparent'};color:${bottomTab === 'positions' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
-            Positions <span style="background:${positions.length > 0 ? '#2962ff' : '#363a45'};color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">${positions.length}</span>
-          </button>
-          <button class="pt-panel-tab" data-panel="pending" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid transparent;color:${TEXT_DIM};background:transparent;margin-right:4px">
-            Pending <span style="background:#363a45;color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">0</span>
-          </button>
-          <button class="pt-panel-tab ${bottomTab === 'closed' ? 'active' : ''}" data-panel="closed" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'closed' ? '#2962ff' : 'transparent'};color:${bottomTab === 'closed' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
-            Closed Positions
-          </button>
-          <span style="color:${TEXT_DIM};padding:0 8px">›</span>
-          <div style="flex:1"></div>
-          <!-- Metrics inline -->
-          <div style="display:flex;gap:16px;align-items:center">
-            <div><span style="color:${TEXT_DIM}">BALANCE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(balance)}</span></div>
-            <div><span style="color:${TEXT_DIM}">PROFIT & LOSS</span> <span class="font-mono" style="color:${pnl >= 0 ? BULL : BEAR};font-weight:600">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</span></div>
-            <div><span style="color:${TEXT_DIM}">EQUITY</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(equity)}</span></div>
-            ${isMargin ? `
-            <div><span style="color:${TEXT_DIM}">MARGIN USED</span> <span class="font-mono" style="color:#ff9800;font-weight:600">${formatCurrency(usedMargin)}</span></div>
-            <div><span style="color:${TEXT_DIM}">MARGIN AVAILABLE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(marginAvail)}</span></div>
-            <div><span style="color:${TEXT_DIM}">MARGIN LEVEL ⓘ</span> <span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '---' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
-            ` : ''}
-          </div>
-          <button id="pt-close-all-btn" style="background:#363a45;color:${TEXT};border:1px solid #4a4e59;border-radius:4px;padding:4px 14px;font-size:11px;cursor:pointer;font-weight:500;margin-left:12px;display:${positions.length > 0 ? 'block' : 'none'}">Close All ▾</button>
+        <div style="text-align:center;padding:6px 14px;font-size:12px;color:${TEXT_DIM}">
+          Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> (∞)
+          ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}" ${l === 3 ? 'selected' : ''}>${l}x</option>`).join('')}</select>` : ''}
         </div>
-
-        <!-- Positions Table -->
-        <div class="pt-bottom" style="flex-shrink:0;max-height:180px;overflow-y:auto;background:${BG};font-size:12px">
-          ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : renderClosedTable(closedTrades, isMargin)}
-        </div>
-
-        <!-- Floating Order Widget (docked bottom-center, collapsible) -->
-        <div id="pt-order-widget" data-collapsed="${widgetCollapsed ? '1' : '0'}" style="position:absolute;bottom:${220 + (positions.length > 0 ? 40 * Math.min(positions.length, 3) : 30)}px;left:50%;transform:translateX(-50%);background:#1e222dF0;backdrop-filter:blur(12px);border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:10;width:540px;overflow:hidden;transition:all 200ms ease">
-          ${widgetCollapsed ? `
-          <!-- Collapsed: just the header -->
-          <div style="display:flex;align-items:center;padding:8px 16px;gap:10px">
-            <span style="font-size:13px;font-weight:700;color:${TEXT}">${selectedPair}</span>
-            <span style="font-size:11px;color:${TEXT_DIM}">MARKET</span>
-            <div style="flex:1"></div>
-            <span class="font-mono" style="font-size:12px;color:${BEAR}">${fmtPrice(sellPrice)}</span>
-            <span style="color:#363a45">/</span>
-            <span class="font-mono" style="font-size:12px;color:${BULL}">${fmtPrice(buyPrice)}</span>
-            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌄</button>
-          </div>
-          ` : `
-          <!-- Top Row -->
-          <div style="display:flex;align-items:center;padding:8px 14px;gap:8px;border-bottom:1px solid #2a2e39">
-            <span style="font-size:14px;font-weight:700;color:${TEXT}">${selectedPair}</span>
-            <div style="display:flex;gap:0;margin-left:6px">
-              <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px 0 0 4px;cursor:pointer;background:#363a45;color:#fff;letter-spacing:0.3px">MARKET ⟲</button>
-              <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-left:none;border-radius:0 4px 4px 0;cursor:pointer;background:transparent;color:${TEXT_DIM};letter-spacing:0.3px">PENDING</button>
+        <div style="display:flex;align-items:stretch;padding:6px 14px 12px;gap:0">
+          <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
+            <div class="font-mono" style="font-size:17px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
+            <div style="font-size:9px;font-weight:600;color:${BEAR};letter-spacing:1px;margin-top:1px">SELL</div>
+          </button>
+          <div style="display:flex;align-items:center;gap:0;padding:0 10px;flex-shrink:0">
+            <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">−</button>
+            <div style="text-align:center;min-width:64px">
+              <input id="pt-order-qty" type="number" value="1000" step="100" style="width:64px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:17px;font-weight:700;font-family:var(--font-mono);outline:none;line-height:1.2">
+              <div style="font-size:9px;color:${TEXT_DIM};letter-spacing:0.5px">USD</div>
             </div>
-            <div style="flex:1"></div>
-            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
-            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
-            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
-            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌃</button>
+            <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">+</button>
           </div>
-          <!-- Margin Info -->
-          <div style="text-align:center;padding:6px 14px;font-size:12px;color:${TEXT_DIM}">
-            Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> (∞)
-            ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}" ${l === 3 ? 'selected' : ''}>${l}x</option>`).join('')}</select>` : ''}
-          </div>
-          <!-- Sell / Qty / Buy -->
-          <div style="display:flex;align-items:stretch;padding:6px 14px 12px;gap:0">
-            <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
-              <div class="font-mono" style="font-size:17px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
-              <div style="font-size:9px;font-weight:600;color:${BEAR};letter-spacing:1px;margin-top:1px">SELL</div>
-            </button>
-            <div style="display:flex;align-items:center;gap:0;padding:0 10px;flex-shrink:0">
-              <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">−</button>
-              <div style="text-align:center;min-width:64px">
-                <input id="pt-order-qty" type="number" value="1000" step="100" style="width:64px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:17px;font-weight:700;font-family:var(--font-mono);outline:none;line-height:1.2">
-                <div style="font-size:9px;color:${TEXT_DIM};letter-spacing:0.5px">USD</div>
-              </div>
-              <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">+</button>
-            </div>
-            <button id="pt-buy-btn" style="flex:1;background:transparent;border:2px solid ${BULL};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
-              <div class="font-mono" style="font-size:17px;font-weight:700;color:${BULL};line-height:1.2">${fmtPrice(buyPrice)}</div>
-              <div style="font-size:9px;font-weight:600;color:${BULL};letter-spacing:1px;margin-top:1px">BUY</div>
-            </button>
-          </div>
-          `}
+          <button id="pt-buy-btn" style="flex:1;background:transparent;border:2px solid ${BULL};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
+            <div class="font-mono" style="font-size:17px;font-weight:700;color:${BULL};line-height:1.2">${fmtPrice(buyPrice)}</div>
+            <div style="font-size:9px;font-weight:600;color:${BULL};letter-spacing:1px;margin-top:1px">BUY</div>
+          </button>
         </div>
-
+        `}
       </div>
     `;
-
-    // Render chart
-    const priceCanvas = document.getElementById('pt-chart-canvas');
-    if (priceCanvas) {
-      const history = getPriceHistory(selectedPair);
-      const relevantPositions = positions.filter(p => p.pair === selectedPair);
-      renderCandlestickChart(priceCanvas, history, relevantPositions);
-    }
   }
 
   function renderPositionsTable(positions, isMargin) {
@@ -621,7 +515,7 @@ export async function render(container) {
       savePaperState(ps);
       showToast(`Closed ${pos.pair} ${pos.side} for ${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`, pnl >= 0 ? 'success' : 'warning');
     }
-    renderView();
+    renderTradingPanel();
   }
 
   function handleTrade(side) {
@@ -662,7 +556,7 @@ export async function render(container) {
     savePaperState(ps);
     const levText = isMargin ? ` (${leverage}x)` : '';
     showToast(`${side.toUpperCase()} ${selectedPair}${levText} — ${quantity.toFixed(4)} @ ${formatCurrency(price)}`, 'success');
-    renderView();
+    renderTradingPanel();
   }
 
   function handleReset() {
@@ -676,7 +570,7 @@ export async function render(container) {
         { label: 'Reset', class: 'btn btn-primary', onClick: () => {
           if (isMargin) { ps.marginAccount = createFreshMarginAccount(); }
           else { const n = createFreshState(); ps.balance = n.balance; ps.startingBalance = n.startingBalance; ps.positions = n.positions; ps.closedTrades = n.closedTrades; ps.equityCurve = n.equityCurve; ps.leaderboard = n.leaderboard; ps.startedAt = n.startedAt; }
-          savePaperState(ps); closeModal(); showToast('Account reset', 'success'); renderView();
+          savePaperState(ps); closeModal(); showToast('Account reset', 'success'); renderTradingPanel();
         }}
       ]
     });
@@ -690,19 +584,44 @@ export async function render(container) {
     while (positions.length > 0) { handleClosePosition(0); }
   }
 
+  // ── Initial layout: Chart View + Trading Overlay ──
+  container.innerHTML = `
+    <div style="display:flex;flex-direction:column;height:calc(100vh - 56px);margin:-24px -32px;overflow:hidden">
+      <div id="pt-chart-container" style="flex:1;min-height:0;overflow:hidden"></div>
+      <div id="pt-trading-overlay" style="flex-shrink:0;background:#131722;color:#d1d4dc;font-family:Inter,sans-serif"></div>
+    </div>
+  `;
+
+  // Render the full chart view (with all toolbars, indicators, drawing tools)
+  const chartContainer = document.getElementById('pt-chart-container');
+  if (chartContainer) {
+    await renderChartView(chartContainer);
+    // Restore our page title (chartView sets it to "Chart")
+    setPageTitle('Paper Trading');
+    // Override the chart wrapper height to fill the flex container
+    const wrapper = chartContainer.querySelector('.tv-chart-wrapper');
+    if (wrapper) {
+      wrapper.style.height = '100%';
+      wrapper.style.minHeight = '0';
+    }
+  }
+
+  // Render the trading panel
+  renderTradingPanel();
+
   // ── Delegated listeners ──
   container.addEventListener('click', (e) => {
     const closeBtn = e.target.closest('.paper-close-btn');
     if (closeBtn) { handleClosePosition(Number(closeBtn.dataset.idx)); return; }
 
     const acctTab = e.target.closest('.pt-acct-tab');
-    if (acctTab) { ps.activeTab = acctTab.dataset.tab; savePaperState(ps); renderView(); return; }
+    if (acctTab) { ps.activeTab = acctTab.dataset.tab; savePaperState(ps); renderTradingPanel(); return; }
 
     const panelTab = e.target.closest('.pt-panel-tab');
-    if (panelTab) { bottomTab = panelTab.dataset.panel; renderView(); return; }
+    if (panelTab) { bottomTab = panelTab.dataset.panel; renderTradingPanel(); return; }
 
     const tfBtn = e.target.closest('.pt-tf-btn');
-    if (tfBtn) { renderView(); return; }
+    if (tfBtn) { renderTradingPanel(); return; }
 
     if (e.target.closest('#pt-buy-btn')) { handleTrade('buy'); return; }
     if (e.target.closest('#pt-sell-btn')) { handleTrade('sell'); return; }
@@ -711,7 +630,7 @@ export async function render(container) {
 
     if (e.target.closest('#pt-widget-toggle')) {
       orderWidgetCollapsed = !orderWidgetCollapsed;
-      renderView();
+      renderTradingPanel();
       return;
     }
 
@@ -730,27 +649,9 @@ export async function render(container) {
   container.addEventListener('change', (e) => {
     if (e.target.id === 'pt-pair-select') {
       selectedPair = e.target.value;
-      renderView();
+      renderTradingPanel();
     }
   });
 
-  // Resize handler
-  const ro = new ResizeObserver(() => {
-    const canvas = document.getElementById('pt-chart-canvas');
-    if (canvas) {
-      const isMargin = ps.activeTab === 'margin';
-      const positions = isMargin ? ps.marginAccount.positions : ps.positions;
-      const history = getPriceHistory(selectedPair);
-      renderCandlestickChart(canvas, history, positions.filter(p => p.pair === selectedPair));
-    }
-  });
-
-  renderView();
-
-  requestAnimationFrame(() => {
-    const chartArea = document.getElementById('pt-chart-canvas')?.parentElement;
-    if (chartArea) ro.observe(chartArea);
-  });
-
-  onViewCleanup(() => { ro.disconnect(); });
+  onViewCleanup(() => {});
 }
