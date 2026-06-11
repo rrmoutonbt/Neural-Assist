@@ -398,22 +398,63 @@ export async function render(container) {
           </div>
         </div>
 
-        <!-- Floating Order Entry -->
-        <div id="pt-order-widget" style="position:absolute;bottom:280px;left:50%;transform:translateX(-50%);background:#1e222d;border:1px solid #363a45;border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,0.5);z-index:10;min-width:480px">
-          <span style="font-size:12px;font-weight:600;color:${TEXT}">${selectedPair}</span>
-          <div style="display:flex;gap:4px;background:#2a2e39;border-radius:4px;padding:2px" id="pt-order-tabs">
-            <button class="pt-order-type active" data-type="market" style="padding:3px 10px;font-size:11px;border:none;border-radius:3px;cursor:pointer;background:#363a45;color:#fff;font-weight:500">MARKET</button>
+        <!-- Floating Order Panel (modeled after control.png) -->
+        ${(() => {
+          const spread = curPrice * 0.0003;
+          const sellPrice = curPrice - spread;
+          const buyPrice = curPrice + spread;
+          const orderQty = 1000;
+          const initMargin = isMargin ? `~${formatCurrency(orderQty / (3))}` : `~${formatCurrency(orderQty)}`;
+          return `
+        <div id="pt-order-widget" style="position:absolute;bottom:280px;left:50%;transform:translateX(-50%);background:#1e222d;border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:10;width:520px;overflow:hidden">
+          <!-- Top Row: Symbol + Order Type Tabs + Collapse -->
+          <div style="display:flex;align-items:center;padding:10px 16px;gap:10px;border-bottom:1px solid #2a2e39">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="font-size:14px;font-weight:700;color:${TEXT}">${selectedPair}</span>
+            </div>
+            <div style="display:flex;gap:0;margin-left:8px">
+              <button class="pt-otype-btn active" data-otype="market" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px 0 0 4px;cursor:pointer;background:#363a45;color:#fff;letter-spacing:0.3px">MARKET ⟲</button>
+              <button class="pt-otype-btn" data-otype="pending" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-left:none;cursor:pointer;background:transparent;color:${TEXT_DIM};letter-spacing:0.3px">PENDING</button>
+            </div>
+            <div style="flex:1"></div>
+            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
+            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
+            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
+            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:4px 8px;font-size:14px;line-height:1">⌃</button>
           </div>
-          ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:3px 6px;font-size:11px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}">${l}x</option>`).join('')}</select>` : ''}
-          <div style="display:flex;align-items:center;gap:0;background:#2a2e39;border:1px solid #363a45;border-radius:4px;overflow:hidden">
-            <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};padding:4px 10px;cursor:pointer;font-size:16px">−</button>
-            <input id="pt-order-qty" type="number" value="1000" step="100" style="width:80px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:13px;font-weight:600;font-family:var(--font-mono);outline:none">
-            <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};padding:4px 10px;cursor:pointer;font-size:16px">+</button>
+
+          <!-- Margin Info -->
+          <div style="text-align:center;padding:8px 16px;font-size:12px;color:${TEXT_DIM}">
+            Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> ${isMargin ? `(${document.getElementById?.('pt-order-leverage')?.value || '3'}x)` : '(∞)'}
+            ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}" ${l === 3 ? 'selected' : ''}>${l}x</option>`).join('')}</select>` : ''}
           </div>
-          <span style="font-size:11px;color:${TEXT_DIM}">USD</span>
-          <button id="pt-sell-btn" style="background:${BEAR};color:#fff;border:none;border-radius:4px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">SELL</button>
-          <button id="pt-buy-btn" style="background:${BULL};color:#fff;border:none;border-radius:4px;padding:8px 20px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px">BUY</button>
-        </div>
+
+          <!-- Bottom Row: Sell / Qty / Buy -->
+          <div style="display:flex;align-items:stretch;padding:8px 16px 14px;gap:0">
+            <!-- SELL Box -->
+            <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:10px 8px;cursor:pointer;text-align:center">
+              <div class="font-mono" style="font-size:18px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
+              <div style="font-size:10px;font-weight:600;color:${BEAR};letter-spacing:1px;margin-top:2px">SELL</div>
+            </button>
+
+            <!-- Qty Controls -->
+            <div style="display:flex;align-items:center;gap:0;padding:0 12px;flex-shrink:0">
+              <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:4px 8px;line-height:1">−</button>
+              <div style="text-align:center;min-width:70px">
+                <input id="pt-order-qty" type="number" value="1000" step="100" style="width:70px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:18px;font-weight:700;font-family:var(--font-mono);outline:none;line-height:1.2">
+                <div style="font-size:10px;color:${TEXT_DIM};letter-spacing:0.5px">USD</div>
+              </div>
+              <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:4px 8px;line-height:1">+</button>
+            </div>
+
+            <!-- BUY Box -->
+            <button id="pt-buy-btn" style="flex:1;background:transparent;border:2px solid ${BULL};border-radius:6px;padding:10px 8px;cursor:pointer;text-align:center">
+              <div class="font-mono" style="font-size:18px;font-weight:700;color:${BULL};line-height:1.2">${fmtPrice(buyPrice)}</div>
+              <div style="font-size:10px;font-weight:600;color:${BULL};letter-spacing:1px;margin-top:2px">BUY</div>
+            </button>
+          </div>
+        </div>`;
+        })()}
 
       </div>
     `;
