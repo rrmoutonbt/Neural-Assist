@@ -290,7 +290,8 @@ export async function render(container) {
   let ps = loadPaperState();
   let selectedPair = PAIRS[0];
   let priceHistoryCache = {};
-  let bottomTab = 'positions'; // positions | pending | closed
+  let bottomTab = 'positions';
+  let orderWidgetCollapsed = false;
 
   function getPriceHistory(pair) {
     if (!priceHistoryCache[pair]) priceHistoryCache[pair] = generatePriceHistory(pair);
@@ -327,134 +328,190 @@ export async function render(container) {
     const lastBar = getPriceHistory(selectedPair).slice(-1)[0];
     const curPrice = lastBar ? lastBar.close : 0;
 
+    const spread = curPrice * 0.0003;
+    const sellPrice = curPrice - spread;
+    const buyPrice = curPrice + spread;
+    const orderQty = 1000;
+    const initMargin = isMargin ? `~${formatCurrency(orderQty / 3)}` : `~${formatCurrency(orderQty)}`;
+    const ohlcColor = lastBar && lastBar.close >= lastBar.open ? BULL : BEAR;
+    const now = new Date();
+    const timestamp = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')} UTC`;
+    const widgetCollapsed = orderWidgetCollapsed;
+
     container.innerHTML = `
       <div class="pt-terminal" style="display:flex;flex-direction:column;height:calc(100vh - 56px);background:${BG};color:${TEXT};font-family:Inter,sans-serif;overflow:hidden;margin:-24px -32px -24px -32px">
 
         <!-- Top Toolbar -->
-        <div class="pt-toolbar" style="display:flex;align-items:center;gap:12px;padding:6px 12px;background:#1e222d;border-bottom:1px solid #2a2e39;flex-shrink:0;min-height:40px">
+        <div style="display:flex;align-items:center;gap:12px;padding:5px 12px;background:#1e222d;border-bottom:1px solid #2a2e39;flex-shrink:0;min-height:38px">
           <select id="pt-pair-select" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:4px 8px;font-size:13px;font-weight:600;cursor:pointer;outline:none">
             ${PAIRS.map(p => `<option value="${p}" ${p === selectedPair ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
-          <div style="display:flex;gap:2px" id="pt-tf-btns">
-            ${['1m','5m','15m','1h','4h','1D'].map((tf, i) => `<button class="pt-tf-btn ${i === 3 ? 'active' : ''}" data-tf="${tf}" style="padding:4px 10px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${i === 3 ? `background:#2962ff;color:#fff` : `background:transparent;color:${TEXT_DIM}`}">${tf}</button>`).join('')}
+          <div style="width:1px;height:18px;background:#363a45"></div>
+          <div style="display:flex;gap:2px">
+            ${['1m','5m','15m','1h','4h','1D'].map((tf, i) => `<button class="pt-tf-btn ${i === 3 ? 'active' : ''}" data-tf="${tf}" style="padding:3px 9px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${i === 3 ? 'background:#2962ff;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">${tf}</button>`).join('')}
           </div>
-          <div style="width:1px;height:20px;background:#363a45"></div>
-          <span style="font-size:12px;color:${TEXT_DIM}">● <span style="color:#26a69a">Trading Open</span></span>
+          <div style="width:1px;height:18px;background:#363a45"></div>
+          <span style="font-size:12px;color:${TEXT_DIM}">●</span><span style="font-size:12px;color:#26a69a;font-weight:500">Trading Open</span>
+          <div style="width:1px;height:18px;background:#363a45"></div>
+          <span style="font-size:11px;color:${TEXT_DIM}">↶ ↷</span>
           <div style="flex:1"></div>
-          <!-- Account tabs -->
           <div style="display:flex;gap:2px;background:#2a2e39;border-radius:4px;padding:2px">
-            <button class="pt-acct-tab ${!isMargin ? 'active' : ''}" data-tab="cash" style="padding:4px 14px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${!isMargin ? 'background:#363a45;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Cash</button>
-            <button class="pt-acct-tab ${isMargin ? 'active' : ''}" data-tab="margin" style="padding:4px 14px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${isMargin ? 'background:#7b1fa2;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Margin</button>
+            <button class="pt-acct-tab ${!isMargin ? 'active' : ''}" data-tab="cash" style="padding:3px 12px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${!isMargin ? 'background:#363a45;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Cash</button>
+            <button class="pt-acct-tab ${isMargin ? 'active' : ''}" data-tab="margin" style="padding:3px 12px;font-size:11px;border:none;border-radius:3px;cursor:pointer;font-weight:500;${isMargin ? 'background:#7b1fa2;color:#fff' : `background:transparent;color:${TEXT_DIM}`}">Margin</button>
           </div>
-          <button id="pt-reset-btn" style="background:transparent;border:1px solid #363a45;color:${TEXT_DIM};border-radius:4px;padding:4px 10px;font-size:11px;cursor:pointer">Reset</button>
+          <button id="pt-reset-btn" style="background:transparent;border:1px solid #363a45;color:${TEXT_DIM};border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer">Reset</button>
         </div>
 
-        <!-- OHLC Overlay -->
-        <div class="pt-ohlcv" style="position:absolute;top:52px;left:16px;z-index:5;font-size:12px;display:flex;gap:6px;align-items:center;pointer-events:none">
-          <span style="font-weight:600;color:${TEXT}">${selectedPair}</span>
-          <span style="color:${TEXT_DIM}">O</span><span style="color:${lastBar && lastBar.close >= lastBar.open ? BULL : BEAR}">${lastBar ? fmtPrice(lastBar.open) : '-'}</span>
-          <span style="color:${TEXT_DIM}">H</span><span style="color:${lastBar && lastBar.close >= lastBar.open ? BULL : BEAR}">${lastBar ? fmtPrice(lastBar.high) : '-'}</span>
-          <span style="color:${TEXT_DIM}">L</span><span style="color:${lastBar && lastBar.close >= lastBar.open ? BULL : BEAR}">${lastBar ? fmtPrice(lastBar.low) : '-'}</span>
-          <span style="color:${TEXT_DIM}">C</span><span style="color:${lastBar && lastBar.close >= lastBar.open ? BULL : BEAR}">${lastBar ? fmtPrice(lastBar.close) : '-'}</span>
-          <span style="color:${TEXT_DIM}">Vol</span><span style="color:${TEXT_DIM}">${lastBar ? lastBar.volume.toLocaleString() : '-'}</span>
+        <!-- Main Content Area -->
+        <div style="flex:1;display:flex;min-height:0;position:relative">
+
+          <!-- Left Floating Toolbar -->
+          <div style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:6;display:flex;flex-direction:column;gap:2px;background:#1e222d;border:1px solid #2a2e39;border-radius:6px;padding:4px">
+            <button class="pt-tool-btn" title="Crosshair" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">+</button>
+            <button class="pt-tool-btn" title="Trend Line" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">╲</button>
+            <button class="pt-tool-btn" title="Horizontal Line" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">─</button>
+            <button class="pt-tool-btn" title="Rectangle" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">▢</button>
+            <button class="pt-tool-btn" title="Text" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center;font-weight:700">T</button>
+            <div style="height:1px;background:#2a2e39;margin:2px 4px"></div>
+            <div style="font-size:8px;color:#363a45;text-align:center;letter-spacing:0.5px;padding:2px 0">SPACES</div>
+            <button class="pt-tool-btn" title="Space 1" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:#2962ff22;color:#2962ff;font-size:13px;display:flex;align-items:center;justify-content:center">◉</button>
+            <button class="pt-tool-btn" title="Space 2" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center">◎</button>
+            <div style="height:1px;background:#2a2e39;margin:2px 4px"></div>
+            <div style="font-size:8px;color:#363a45;text-align:center;letter-spacing:0.5px;padding:2px 0">PANELS</div>
+            <button class="pt-tool-btn" title="Chart Panel" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⊞</button>
+            <button class="pt-tool-btn" title="Order Panel" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:#2962ff22;color:#2962ff;font-size:14px;display:flex;align-items:center;justify-content:center">⊟</button>
+            <button class="pt-tool-btn" title="Info" style="width:32px;height:32px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">ⓘ</button>
+          </div>
+
+          <!-- Chart + OHLC -->
+          <div style="flex:1;position:relative;min-height:0">
+            <!-- OHLC Overlay -->
+            <div style="position:absolute;top:8px;left:52px;z-index:5;font-size:12px;pointer-events:none">
+              <div style="display:flex;gap:6px;align-items:center">
+                <span style="font-weight:700;color:${TEXT};font-size:13px">${selectedPair} · 1h</span>
+                <span style="color:${TEXT_DIM}">O</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.open) : '-'}</span>
+                <span style="color:${TEXT_DIM}">H</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.high) : '-'}</span>
+                <span style="color:${TEXT_DIM}">L</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.low) : '-'}</span>
+                <span style="color:${TEXT_DIM}">C</span><span style="color:${ohlcColor}">${lastBar ? fmtPrice(lastBar.close) : '-'}</span>
+                <span style="color:${TEXT_DIM}">Vol</span><span style="color:${TEXT_DIM}">${lastBar ? lastBar.volume.toLocaleString() : '-'}</span>
+              </div>
+            </div>
+            <canvas id="pt-chart-canvas" style="width:100%;height:100%;display:block"></canvas>
+          </div>
+
+          <!-- Right Floating Sidebar -->
+          <div style="position:absolute;right:0;top:0;bottom:0;width:36px;z-index:6;display:flex;flex-direction:column;align-items:center;padding:8px 0;gap:4px;background:#1e222d;border-left:1px solid #2a2e39">
+            <button class="pt-tool-btn" title="Watchlist" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:13px;display:flex;align-items:center;justify-content:center">☰</button>
+            <button class="pt-tool-btn" title="Alerts" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⏰</button>
+            <button class="pt-tool-btn" title="Calendar" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">📅</button>
+            <div style="flex:1"></div>
+            <button class="pt-tool-btn" title="Settings" style="width:28px;height:28px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM};font-size:14px;display:flex;align-items:center;justify-content:center">⚙</button>
+          </div>
+
         </div>
 
-        <!-- Chart Area -->
-        <div style="flex:1;position:relative;min-height:0">
-          <canvas id="pt-chart-canvas" style="width:100%;height:100%;display:block"></canvas>
+        <!-- Bottom Timeframe Bar -->
+        <div style="display:flex;align-items:center;padding:3px 12px;background:#1e222d;border-top:1px solid #2a2e39;flex-shrink:0;min-height:26px;font-size:11px">
+          <button style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;padding:2px 4px;font-size:12px">›</button>
+          <div style="display:flex;gap:6px;margin-left:8px">
+            ${['1D','5D','1M','3M','1Y','5Y'].map(p => `<button class="pt-range-btn" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;padding:2px 6px;font-size:11px;font-weight:500">${p}</button>`).join('')}
+            <span style="color:${TEXT_DIM};padding:2px 6px">Go to</span>
+          </div>
+          <div style="flex:1"></div>
+          <span style="color:${TEXT_DIM};font-weight:500">${timestamp}</span>
+          <div style="display:flex;gap:8px;margin-left:16px">
+            <span style="color:${TEXT_DIM};cursor:pointer">%</span>
+            <span style="color:${TEXT_DIM};cursor:pointer">log</span>
+            <span style="color:${TEXT_DIM};cursor:pointer;font-weight:600">auto</span>
+          </div>
         </div>
 
-        <!-- Account Metrics Bar -->
-        <div class="pt-metrics" style="display:flex;align-items:center;gap:0;background:#1e222d;border-top:1px solid #2a2e39;border-bottom:1px solid #2a2e39;flex-shrink:0;padding:0 16px;min-height:42px;font-size:12px">
-          <div style="display:flex;gap:24px;flex:1">
-            <div><span style="color:${TEXT_DIM}">BALANCE</span><br><span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(balance)}</span></div>
-            <div><span style="color:${TEXT_DIM}">PROFIT & LOSS</span><br><span class="font-mono" style="color:${pnl >= 0 ? BULL : BEAR};font-weight:600">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</span></div>
-            <div><span style="color:${TEXT_DIM}">EQUITY</span><br><span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(equity)}</span></div>
+        <!-- Account Metrics Bar + Positions Tabs -->
+        <div style="display:flex;align-items:center;background:#1e222d;border-top:1px solid #2a2e39;flex-shrink:0;padding:0 12px;min-height:36px;font-size:11px">
+          <!-- Panel Tabs -->
+          <button class="pt-panel-tab ${bottomTab === 'positions' ? 'active' : ''}" data-panel="positions" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'positions' ? '#2962ff' : 'transparent'};color:${bottomTab === 'positions' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
+            Positions <span style="background:${positions.length > 0 ? '#2962ff' : '#363a45'};color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">${positions.length}</span>
+          </button>
+          <button class="pt-panel-tab" data-panel="pending" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid transparent;color:${TEXT_DIM};background:transparent;margin-right:4px">
+            Pending <span style="background:#363a45;color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:2px">0</span>
+          </button>
+          <button class="pt-panel-tab ${bottomTab === 'closed' ? 'active' : ''}" data-panel="closed" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'closed' ? '#2962ff' : 'transparent'};color:${bottomTab === 'closed' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
+            Closed Positions
+          </button>
+          <span style="color:${TEXT_DIM};padding:0 8px">›</span>
+          <div style="flex:1"></div>
+          <!-- Metrics inline -->
+          <div style="display:flex;gap:16px;align-items:center">
+            <div><span style="color:${TEXT_DIM}">BALANCE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(balance)}</span></div>
+            <div><span style="color:${TEXT_DIM}">PROFIT & LOSS</span> <span class="font-mono" style="color:${pnl >= 0 ? BULL : BEAR};font-weight:600">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</span></div>
+            <div><span style="color:${TEXT_DIM}">EQUITY</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(equity)}</span></div>
             ${isMargin ? `
-            <div><span style="color:${TEXT_DIM}">MARGIN USED</span><br><span class="font-mono" style="color:#ff9800;font-weight:600">${formatCurrency(usedMargin)}</span></div>
-            <div><span style="color:${TEXT_DIM}">MARGIN AVAILABLE</span><br><span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(marginAvail)}</span></div>
-            <div><span style="color:${TEXT_DIM}">MARGIN LEVEL</span><br><span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '---' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
+            <div><span style="color:${TEXT_DIM}">MARGIN USED</span> <span class="font-mono" style="color:#ff9800;font-weight:600">${formatCurrency(usedMargin)}</span></div>
+            <div><span style="color:${TEXT_DIM}">MARGIN AVAILABLE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(marginAvail)}</span></div>
+            <div><span style="color:${TEXT_DIM}">MARGIN LEVEL ⓘ</span> <span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '---' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
             ` : ''}
           </div>
-          <button id="pt-close-all-btn" style="background:#363a45;color:${TEXT};border:1px solid #4a4e59;border-radius:4px;padding:5px 16px;font-size:11px;cursor:pointer;font-weight:500;display:${positions.length > 0 ? 'block' : 'none'}">Close All ▾</button>
+          <button id="pt-close-all-btn" style="background:#363a45;color:${TEXT};border:1px solid #4a4e59;border-radius:4px;padding:4px 14px;font-size:11px;cursor:pointer;font-weight:500;margin-left:12px;display:${positions.length > 0 ? 'block' : 'none'}">Close All ▾</button>
         </div>
 
-        <!-- Bottom Panel: Positions / Closed -->
-        <div class="pt-bottom" style="flex-shrink:0;max-height:240px;display:flex;flex-direction:column;background:#131722">
-          <!-- Panel Tabs -->
-          <div style="display:flex;align-items:center;gap:0;border-bottom:1px solid #2a2e39;padding:0 12px;min-height:32px">
-            <button class="pt-panel-tab ${bottomTab === 'positions' ? 'active' : ''}" data-panel="positions" style="padding:6px 14px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'positions' ? '#2962ff' : 'transparent'};color:${bottomTab === 'positions' ? TEXT : TEXT_DIM};background:transparent">
-              Positions <span style="background:${positions.length > 0 ? '#2962ff' : '#363a45'};color:#fff;border-radius:3px;padding:0 5px;font-size:10px;margin-left:4px">${positions.length}</span>
-            </button>
-            <button class="pt-panel-tab ${bottomTab === 'closed' ? 'active' : ''}" data-panel="closed" style="padding:6px 14px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'closed' ? '#2962ff' : 'transparent'};color:${bottomTab === 'closed' ? TEXT : TEXT_DIM};background:transparent">
-              Closed Positions
-            </button>
-            <div style="flex:1"></div>
-          </div>
-
-          <!-- Panel Content -->
-          <div id="pt-panel-content" style="flex:1;overflow-y:auto;font-size:12px">
-            ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : renderClosedTable(closedTrades, isMargin)}
-          </div>
+        <!-- Positions Table -->
+        <div class="pt-bottom" style="flex-shrink:0;max-height:180px;overflow-y:auto;background:${BG};font-size:12px">
+          ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : renderClosedTable(closedTrades, isMargin)}
         </div>
 
-        <!-- Floating Order Panel (modeled after control.png) -->
-        ${(() => {
-          const spread = curPrice * 0.0003;
-          const sellPrice = curPrice - spread;
-          const buyPrice = curPrice + spread;
-          const orderQty = 1000;
-          const initMargin = isMargin ? `~${formatCurrency(orderQty / (3))}` : `~${formatCurrency(orderQty)}`;
-          return `
-        <div id="pt-order-widget" style="position:absolute;bottom:280px;left:50%;transform:translateX(-50%);background:#1e222d;border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:10;width:520px;overflow:hidden">
-          <!-- Top Row: Symbol + Order Type Tabs + Collapse -->
-          <div style="display:flex;align-items:center;padding:10px 16px;gap:10px;border-bottom:1px solid #2a2e39">
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="font-size:14px;font-weight:700;color:${TEXT}">${selectedPair}</span>
-            </div>
-            <div style="display:flex;gap:0;margin-left:8px">
-              <button class="pt-otype-btn active" data-otype="market" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px 0 0 4px;cursor:pointer;background:#363a45;color:#fff;letter-spacing:0.3px">MARKET ⟲</button>
-              <button class="pt-otype-btn" data-otype="pending" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-left:none;cursor:pointer;background:transparent;color:${TEXT_DIM};letter-spacing:0.3px">PENDING</button>
+        <!-- Floating Order Widget (docked bottom-center, collapsible) -->
+        <div id="pt-order-widget" data-collapsed="${widgetCollapsed ? '1' : '0'}" style="position:absolute;bottom:${220 + (positions.length > 0 ? 40 * Math.min(positions.length, 3) : 30)}px;left:50%;transform:translateX(-50%);background:#1e222dF0;backdrop-filter:blur(12px);border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:10;width:540px;overflow:hidden;transition:all 200ms ease">
+          ${widgetCollapsed ? `
+          <!-- Collapsed: just the header -->
+          <div style="display:flex;align-items:center;padding:8px 16px;gap:10px">
+            <span style="font-size:13px;font-weight:700;color:${TEXT}">${selectedPair}</span>
+            <span style="font-size:11px;color:${TEXT_DIM}">MARKET</span>
+            <div style="flex:1"></div>
+            <span class="font-mono" style="font-size:12px;color:${BEAR}">${fmtPrice(sellPrice)}</span>
+            <span style="color:#363a45">/</span>
+            <span class="font-mono" style="font-size:12px;color:${BULL}">${fmtPrice(buyPrice)}</span>
+            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌄</button>
+          </div>
+          ` : `
+          <!-- Top Row -->
+          <div style="display:flex;align-items:center;padding:8px 14px;gap:8px;border-bottom:1px solid #2a2e39">
+            <span style="font-size:14px;font-weight:700;color:${TEXT}">${selectedPair}</span>
+            <div style="display:flex;gap:0;margin-left:6px">
+              <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px 0 0 4px;cursor:pointer;background:#363a45;color:#fff;letter-spacing:0.3px">MARKET ⟲</button>
+              <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-left:none;border-radius:0 4px 4px 0;cursor:pointer;background:transparent;color:${TEXT_DIM};letter-spacing:0.3px">PENDING</button>
             </div>
             <div style="flex:1"></div>
-            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
-            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
-            <button class="pt-otype-btn" style="padding:5px 14px;font-size:11px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
-            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:4px 8px;font-size:14px;line-height:1">⌃</button>
+            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
+            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
+            <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
+            <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌃</button>
           </div>
-
           <!-- Margin Info -->
-          <div style="text-align:center;padding:8px 16px;font-size:12px;color:${TEXT_DIM}">
-            Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> ${isMargin ? `(${document.getElementById?.('pt-order-leverage')?.value || '3'}x)` : '(∞)'}
+          <div style="text-align:center;padding:6px 14px;font-size:12px;color:${TEXT_DIM}">
+            Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> (∞)
             ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}" ${l === 3 ? 'selected' : ''}>${l}x</option>`).join('')}</select>` : ''}
           </div>
-
-          <!-- Bottom Row: Sell / Qty / Buy -->
-          <div style="display:flex;align-items:stretch;padding:8px 16px 14px;gap:0">
-            <!-- SELL Box -->
-            <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:10px 8px;cursor:pointer;text-align:center">
-              <div class="font-mono" style="font-size:18px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
-              <div style="font-size:10px;font-weight:600;color:${BEAR};letter-spacing:1px;margin-top:2px">SELL</div>
+          <!-- Sell / Qty / Buy -->
+          <div style="display:flex;align-items:stretch;padding:6px 14px 12px;gap:0">
+            <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
+              <div class="font-mono" style="font-size:17px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
+              <div style="font-size:9px;font-weight:600;color:${BEAR};letter-spacing:1px;margin-top:1px">SELL</div>
             </button>
-
-            <!-- Qty Controls -->
-            <div style="display:flex;align-items:center;gap:0;padding:0 12px;flex-shrink:0">
-              <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:4px 8px;line-height:1">−</button>
-              <div style="text-align:center;min-width:70px">
-                <input id="pt-order-qty" type="number" value="1000" step="100" style="width:70px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:18px;font-weight:700;font-family:var(--font-mono);outline:none;line-height:1.2">
-                <div style="font-size:10px;color:${TEXT_DIM};letter-spacing:0.5px">USD</div>
+            <div style="display:flex;align-items:center;gap:0;padding:0 10px;flex-shrink:0">
+              <button id="pt-qty-minus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">−</button>
+              <div style="text-align:center;min-width:64px">
+                <input id="pt-order-qty" type="number" value="1000" step="100" style="width:64px;background:transparent;border:none;color:${TEXT};text-align:center;font-size:17px;font-weight:700;font-family:var(--font-mono);outline:none;line-height:1.2">
+                <div style="font-size:9px;color:${TEXT_DIM};letter-spacing:0.5px">USD</div>
               </div>
-              <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:4px 8px;line-height:1">+</button>
+              <button id="pt-qty-plus" style="background:transparent;border:none;color:${TEXT_DIM};cursor:pointer;font-size:22px;padding:2px 8px;line-height:1">+</button>
             </div>
-
-            <!-- BUY Box -->
-            <button id="pt-buy-btn" style="flex:1;background:transparent;border:2px solid ${BULL};border-radius:6px;padding:10px 8px;cursor:pointer;text-align:center">
-              <div class="font-mono" style="font-size:18px;font-weight:700;color:${BULL};line-height:1.2">${fmtPrice(buyPrice)}</div>
-              <div style="font-size:10px;font-weight:600;color:${BULL};letter-spacing:1px;margin-top:2px">BUY</div>
+            <button id="pt-buy-btn" style="flex:1;background:transparent;border:2px solid ${BULL};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
+              <div class="font-mono" style="font-size:17px;font-weight:700;color:${BULL};line-height:1.2">${fmtPrice(buyPrice)}</div>
+              <div style="font-size:9px;font-weight:600;color:${BULL};letter-spacing:1px;margin-top:1px">BUY</div>
             </button>
           </div>
-        </div>`;
-        })()}
+          `}
+        </div>
 
       </div>
     `;
@@ -651,6 +708,12 @@ export async function render(container) {
     if (e.target.closest('#pt-sell-btn')) { handleTrade('sell'); return; }
     if (e.target.closest('#pt-reset-btn')) { handleReset(); return; }
     if (e.target.closest('#pt-close-all-btn')) { handleCloseAll(); return; }
+
+    if (e.target.closest('#pt-widget-toggle')) {
+      orderWidgetCollapsed = !orderWidgetCollapsed;
+      renderView();
+      return;
+    }
 
     if (e.target.closest('#pt-qty-minus')) {
       const inp = document.getElementById('pt-order-qty');
