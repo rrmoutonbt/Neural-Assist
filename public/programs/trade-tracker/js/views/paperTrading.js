@@ -10,7 +10,7 @@ import { setPageTitle } from '../components/topbar.js';
 import { renderKpiCards } from '../components/kpiCard.js';
 import { createLineChart, CHART_COLORS } from '../components/charts.js';
 import { onViewCleanup } from '../router.js';
-import { showModal, closeModal } from '../components/modal.js';
+import { showModal, closeModal, getModalContent } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { formatCurrency, formatPercent } from '../utils/formatters.js';
 import { PAIRS, PAIR_BASE_PRICES, PAPER_KEY } from '../utils/constants.js';
@@ -642,16 +642,7 @@ export async function render(container) {
       renderCandlestickChart(priceCanvas, history, relevantPositions, closedTrades);
     }
 
-    // Chart pair selector
-    document.getElementById('chart-pair-select')?.addEventListener('change', (e) => {
-      selectedChartPair = e.target.value;
-      const canvas = document.getElementById('price-chart-canvas');
-      if (canvas) {
-        const history = getPriceHistory(selectedChartPair);
-        const relevantPositions = positions.filter(p => p.pair === selectedChartPair);
-        renderCandlestickChart(canvas, history, relevantPositions, closedTrades);
-      }
-    });
+    // Chart pair selector — handled by delegated listener
 
     // ── Open positions table ──
     const posEl = document.getElementById('paper-positions');
@@ -719,38 +710,7 @@ export async function render(container) {
         `;
       }
 
-      // Close position handlers
-      posEl.querySelectorAll('.paper-close-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const idx = Number(btn.dataset.idx);
-          if (isMargin) {
-            const pos = ps.marginAccount.positions[idx];
-            if (!pos) return;
-            const exitPrice = getMockPrice(pos.pair);
-            const direction = pos.side === 'buy' ? 1 : -1;
-            const pnl = (exitPrice - pos.entryPrice) * pos.quantity * direction;
-            ps.marginAccount.balance += (pos.marginUsed || 0) + pnl;
-            ps.marginAccount.closedTrades.push({
-              ...pos, exitPrice, pnl: Math.round(pnl * 100) / 100, closedAt: new Date().toISOString()
-            });
-            ps.marginAccount.positions.splice(idx, 1);
-            savePaperState(ps);
-            showToast(`Closed ${pos.leverage}x ${pos.pair} ${pos.side} for ${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`, pnl >= 0 ? 'success' : 'warning');
-          } else {
-            const pos = ps.positions[idx];
-            if (!pos) return;
-            const exitPrice = getMockPrice(pos.pair);
-            const pnl = (exitPrice - pos.entryPrice) * pos.quantity * (pos.side === 'buy' ? 1 : -1);
-            ps.balance += (pos.amount || pos.entryPrice * pos.quantity) + pnl;
-            ps.closedTrades.push({ ...pos, exitPrice, pnl: Math.round(pnl * 100) / 100, closedAt: new Date().toISOString() });
-            ps.positions.splice(idx, 1);
-            ps.equityCurve.push({ date: new Date().toISOString(), equity: Math.round(getTotalEquity() * 100) / 100 });
-            savePaperState(ps);
-            showToast(`Closed ${pos.pair} ${pos.side} for ${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`, pnl >= 0 ? 'success' : 'warning');
-          }
-          renderView();
-        });
-      });
+      // Close position handlers — handled by delegated listener
     }
 
     // ── Trade history ──
@@ -790,47 +750,7 @@ export async function render(container) {
       }
     }
 
-    // ── Tab switching ──
-    document.querySelectorAll('.paper-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        ps.activeTab = tab.dataset.tab;
-        savePaperState(ps);
-        renderView();
-      });
-    });
-
-    // ── New trade button ──
-    document.getElementById('paper-trade-btn')?.addEventListener('click', () => openPaperTradeModal(isMargin));
-
-    // ── Reset button ──
-    document.getElementById('paper-reset-btn')?.addEventListener('click', () => {
-      showModal({
-        title: 'Reset Paper Account',
-        body: `<p style="color:var(--color-text-muted)">This will reset your <strong>${isMargin ? 'margin' : 'cash'}</strong> paper trading account${isMargin ? ` to $${MARGIN_STARTING_BALANCE.toLocaleString()}` : ' to $100,000'} and clear all positions and history. This cannot be undone.</p>`,
-        width: '400px',
-        actions: [
-          { label: 'Cancel', class: 'btn btn-secondary', onClick: closeModal },
-          { label: 'Reset Account', class: 'btn btn-primary', onClick: () => {
-            if (isMargin) {
-              ps.marginAccount = createFreshMarginAccount();
-            } else {
-              const newState = createFreshState();
-              ps.balance = newState.balance;
-              ps.startingBalance = newState.startingBalance;
-              ps.positions = newState.positions;
-              ps.closedTrades = newState.closedTrades;
-              ps.equityCurve = newState.equityCurve;
-              ps.leaderboard = newState.leaderboard;
-              ps.startedAt = newState.startedAt;
-            }
-            savePaperState(ps);
-            closeModal();
-            showToast(`${isMargin ? 'Margin' : 'Cash'} account reset`, 'success');
-            renderView();
-          }}
-        ]
-      });
-    });
+    // All interactive handlers delegated to container listener below
   }
 
   // ── Trade Modal ─────────────────────────────
@@ -966,22 +886,26 @@ export async function render(container) {
     });
 
     // Wire up interactive elements after modal renders
-    setTimeout(() => {
-      // Side pills
-      document.querySelectorAll('.radio-pill').forEach(pill => {
+    requestAnimationFrame(() => {
+      const modal = getModalContent();
+      if (!modal) return;
+
+      // Side pills (scoped to modal)
+      modal.querySelectorAll('.radio-pill').forEach(pill => {
         pill.addEventListener('click', () => {
-          document.querySelectorAll('.radio-pill').forEach(p => p.classList.remove('active'));
+          modal.querySelectorAll('.radio-pill').forEach(p => p.classList.remove('active'));
           pill.classList.add('active');
-          document.getElementById('paper-side').value = pill.dataset.side;
+          const sideInput = modal.querySelector('#paper-side');
+          if (sideInput) sideInput.value = pill.dataset.side;
           if (isMargin) updateMarginInfo();
         });
       });
 
-      // Leverage pills
+      // Leverage pills (scoped to modal)
       if (isMargin) {
-        document.querySelectorAll('.leverage-pill').forEach(pill => {
+        modal.querySelectorAll('.leverage-pill').forEach(pill => {
           pill.addEventListener('click', () => {
-            document.querySelectorAll('.leverage-pill').forEach(p => {
+            modal.querySelectorAll('.leverage-pill').forEach(p => {
               p.style.borderColor = 'var(--color-border)';
               p.style.background = 'transparent';
               p.style.color = 'var(--color-text-muted)';
@@ -989,21 +913,23 @@ export async function render(container) {
             pill.style.borderColor = 'var(--color-purple)';
             pill.style.background = 'var(--color-purple-light)';
             pill.style.color = 'var(--color-purple)';
-            document.getElementById('paper-leverage').value = pill.dataset.leverage;
+            const levInput = modal.querySelector('#paper-leverage');
+            if (levInput) levInput.value = pill.dataset.leverage;
             updateMarginInfo();
           });
         });
 
         // Amount input change
-        document.getElementById('paper-amount')?.addEventListener('input', updateMarginInfo);
-        document.getElementById('paper-pair')?.addEventListener('change', updateMarginInfo);
+        modal.querySelector('#paper-amount')?.addEventListener('input', updateMarginInfo);
+        modal.querySelector('#paper-pair')?.addEventListener('change', updateMarginInfo);
         updateMarginInfo();
       }
-    }, 50);
+    });
   }
 
   function updateMarginInfo() {
     const pair = document.getElementById('paper-pair')?.value;
+    if (!pair) return;
     const side = document.getElementById('paper-side')?.value || 'buy';
     const amount = Number(document.getElementById('paper-amount')?.value) || 0;
     const leverage = Number(document.getElementById('paper-leverage')?.value) || 3;
@@ -1027,6 +953,99 @@ export async function render(container) {
     const infoMaint = document.getElementById('info-maint');
     if (infoMaint) infoMaint.textContent = formatCurrency(maint);
   }
+
+  // ── Delegated event listener (attached once, survives re-renders) ──
+  function handleClosePosition(idx) {
+    const isMargin = ps.activeTab === 'margin';
+    if (isMargin) {
+      const pos = ps.marginAccount.positions[idx];
+      if (!pos) return;
+      const exitPrice = getMockPrice(pos.pair);
+      const direction = pos.side === 'buy' ? 1 : -1;
+      const pnl = (exitPrice - pos.entryPrice) * pos.quantity * direction;
+      ps.marginAccount.balance += (pos.marginUsed || 0) + pnl;
+      ps.marginAccount.closedTrades.push({
+        ...pos, exitPrice, pnl: Math.round(pnl * 100) / 100, closedAt: new Date().toISOString()
+      });
+      ps.marginAccount.positions.splice(idx, 1);
+      ps.marginAccount.equityCurve = ps.marginAccount.equityCurve || [];
+      ps.marginAccount.equityCurve.push({ date: new Date().toISOString(), equity: Math.round(calcMarginEquity(ps.marginAccount) * 100) / 100 });
+      savePaperState(ps);
+      showToast(`Closed ${pos.leverage}x ${pos.pair} ${pos.side} for ${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`, pnl >= 0 ? 'success' : 'warning');
+    } else {
+      const pos = ps.positions[idx];
+      if (!pos) return;
+      const exitPrice = getMockPrice(pos.pair);
+      const pnl = (exitPrice - pos.entryPrice) * pos.quantity * (pos.side === 'buy' ? 1 : -1);
+      ps.balance += (pos.amount || pos.entryPrice * pos.quantity) + pnl;
+      ps.closedTrades.push({ ...pos, exitPrice, pnl: Math.round(pnl * 100) / 100, closedAt: new Date().toISOString() });
+      ps.positions.splice(idx, 1);
+      ps.equityCurve.push({ date: new Date().toISOString(), equity: Math.round(getTotalEquity() * 100) / 100 });
+      savePaperState(ps);
+      showToast(`Closed ${pos.pair} ${pos.side} for ${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}`, pnl >= 0 ? 'success' : 'warning');
+    }
+    renderView();
+  }
+
+  function handleResetAccount() {
+    const isMargin = ps.activeTab === 'margin';
+    showModal({
+      title: 'Reset Paper Account',
+      body: `<p style="color:var(--color-text-muted)">This will reset your <strong>${isMargin ? 'margin' : 'cash'}</strong> paper trading account${isMargin ? ` to $${MARGIN_STARTING_BALANCE.toLocaleString()}` : ' to $100,000'} and clear all positions and history. This cannot be undone.</p>`,
+      width: '400px',
+      actions: [
+        { label: 'Cancel', class: 'btn btn-secondary', onClick: closeModal },
+        { label: 'Reset Account', class: 'btn btn-primary', onClick: () => {
+          if (isMargin) {
+            ps.marginAccount = createFreshMarginAccount();
+          } else {
+            const newState = createFreshState();
+            ps.balance = newState.balance;
+            ps.startingBalance = newState.startingBalance;
+            ps.positions = newState.positions;
+            ps.closedTrades = newState.closedTrades;
+            ps.equityCurve = newState.equityCurve;
+            ps.leaderboard = newState.leaderboard;
+            ps.startedAt = newState.startedAt;
+          }
+          savePaperState(ps);
+          closeModal();
+          showToast(`${isMargin ? 'Margin' : 'Cash'} account reset`, 'success');
+          renderView();
+        }}
+      ]
+    });
+  }
+
+  container.addEventListener('click', (e) => {
+    // Close position button
+    const closeBtn = e.target.closest('.paper-close-btn');
+    if (closeBtn) { handleClosePosition(Number(closeBtn.dataset.idx)); return; }
+
+    // Tab switching
+    const tab = e.target.closest('.paper-tab');
+    if (tab) { ps.activeTab = tab.dataset.tab; savePaperState(ps); renderView(); return; }
+
+    // New trade button
+    if (e.target.closest('#paper-trade-btn')) { openPaperTradeModal(ps.activeTab === 'margin'); return; }
+
+    // Reset button
+    if (e.target.closest('#paper-reset-btn')) { handleResetAccount(); return; }
+  });
+
+  container.addEventListener('change', (e) => {
+    // Chart pair selector
+    if (e.target.id === 'chart-pair-select') {
+      selectedChartPair = e.target.value;
+      const canvas = document.getElementById('price-chart-canvas');
+      if (canvas) {
+        const positions = (ps.activeTab === 'margin') ? ps.marginAccount.positions : ps.positions;
+        const closedTrades = (ps.activeTab === 'margin') ? ps.marginAccount.closedTrades : ps.closedTrades;
+        const relevantPositions = positions.filter(p => p.pair === selectedChartPair);
+        renderCandlestickChart(canvas, getPriceHistory(selectedChartPair), relevantPositions, closedTrades);
+      }
+    }
+  });
 
   renderView();
   onViewCleanup(() => destroyCharts());
