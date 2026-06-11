@@ -79,35 +79,49 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
   const totalRange = maxP - minP;
 
   const barW = chartW / priceData.length;
-  const candleW = Math.max(barW * 0.6, 2);
+  const candleW = Math.max(barW * 0.7, 2);
 
   const yScale = (price) => PAD_TOP + (1 - (price - minP) / totalRange) * chartH;
   const xScale = (i) => PAD_LEFT + i * barW + barW / 2;
 
-  // Background
-  ctx.fillStyle = '#f8fbff';
+  // Colors matching Charts tab exactly
+  const BULL = '#56d364', BEAR = '#f85149';
+
+  // Background (dark, matching Charts tab)
+  ctx.fillStyle = '#0d1117';
   ctx.fillRect(0, 0, W, H);
 
-  // Grid lines
-  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
-  ctx.lineWidth = 1;
-  const gridLines = 5;
+  // Grid lines (matching Charts tab)
+  ctx.strokeStyle = 'rgba(48,54,61,0.5)';
+  ctx.lineWidth = 0.5;
+  const gridLines = 8;
   for (let i = 0; i <= gridLines; i++) {
     const y = PAD_TOP + (chartH / gridLines) * i;
     ctx.beginPath();
     ctx.moveTo(PAD_LEFT, y);
     ctx.lineTo(W - PAD_RIGHT, y);
     ctx.stroke();
+  }
+  // Vertical grid
+  for (let i = 0; i <= 12; i++) {
+    const x = PAD_LEFT + (chartW / 12) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, PAD_TOP);
+    ctx.lineTo(x, PAD_TOP + chartH);
+    ctx.stroke();
+  }
 
-    // Price label
+  // Price axis labels
+  for (let i = 0; i <= gridLines; i++) {
+    const y = PAD_TOP + (chartH / gridLines) * i;
     const price = maxP - (totalRange / gridLines) * i;
-    ctx.fillStyle = '#546e7a';
+    ctx.fillStyle = '#8b949e';
     ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(formatPriceShort(price), W - PAD_RIGHT + 6, y + 3);
   }
 
-  // Volume bars (background)
+  // Volume bars (background, matching Charts tab colors)
   const maxVol = Math.max(...priceData.map(d => d.volume));
   const volH = chartH * 0.15;
   for (let i = 0; i < priceData.length; i++) {
@@ -115,17 +129,17 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
     const x = xScale(i);
     const h = (d.volume / maxVol) * volH;
     const bullish = d.close >= d.open;
-    ctx.fillStyle = bullish ? 'rgba(26,138,74,0.12)' : 'rgba(198,40,40,0.12)';
+    ctx.fillStyle = bullish ? 'rgba(86,211,100,0.18)' : 'rgba(248,81,73,0.18)';
     ctx.fillRect(x - candleW / 2, PAD_TOP + chartH - h, candleW, h);
   }
 
-  // Candlesticks (OHLC style matching Charts tab)
+  // Candlesticks (matching Charts tab exactly)
   for (let i = 0; i < priceData.length; i++) {
     const d = priceData[i];
     const x = xScale(i);
     const bullish = d.close >= d.open;
 
-    ctx.strokeStyle = ctx.fillStyle = bullish ? '#1a8a4a' : '#c62828';
+    ctx.strokeStyle = ctx.fillStyle = bullish ? BULL : BEAR;
     ctx.lineWidth = 1;
 
     // Wick
@@ -154,7 +168,7 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
       if (y >= PAD_TOP && y <= PAD_TOP + chartH) {
         // Dashed line
         ctx.setLineDash([4, 3]);
-        ctx.strokeStyle = pos.side === 'buy' ? 'rgba(26,138,74,0.6)' : 'rgba(198,40,40,0.6)';
+        ctx.strokeStyle = pos.side === 'buy' ? 'rgba(86,211,100,0.6)' : 'rgba(248,81,73,0.6)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(PAD_LEFT, y);
@@ -166,7 +180,7 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
         const label = `${pos.side === 'buy' ? 'L' : 'S'} ${formatPriceShort(pos.entryPrice)}`;
         ctx.font = 'bold 9px Inter, sans-serif';
         const tw = ctx.measureText(label).width;
-        ctx.fillStyle = pos.side === 'buy' ? '#1a8a4a' : '#c62828';
+        ctx.fillStyle = pos.side === 'buy' ? BULL : BEAR;
         ctx.fillRect(W - PAD_RIGHT - tw - 8, y - 8, tw + 6, 16);
         ctx.fillStyle = '#ffffff';
         ctx.textAlign = 'left';
@@ -178,7 +192,7 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
         const liqY = yScale(pos.liquidationPrice);
         if (liqY >= PAD_TOP && liqY <= PAD_TOP + chartH) {
           ctx.setLineDash([2, 2]);
-          ctx.strokeStyle = 'rgba(198,40,40,0.8)';
+          ctx.strokeStyle = 'rgba(248,81,73,0.8)';
           ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(PAD_LEFT, liqY);
@@ -189,7 +203,7 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
           const liqLabel = `LIQ ${formatPriceShort(pos.liquidationPrice)}`;
           ctx.font = 'bold 9px Inter, sans-serif';
           const ltw = ctx.measureText(liqLabel).width;
-          ctx.fillStyle = '#c62828';
+          ctx.fillStyle = BEAR;
           ctx.fillRect(PAD_LEFT, liqY - 8, ltw + 6, 16);
           ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'left';
@@ -199,11 +213,12 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
     }
   }
 
-  // Current price line
+  // Current price line (matching Charts tab — color based on last candle)
   const lastPrice = lastBar.close;
   const curY = yScale(lastPrice);
-  ctx.setLineDash([3, 3]);
-  ctx.strokeStyle = '#3949ab';
+  const lastBull = lastBar.close >= lastBar.open;
+  ctx.setLineDash([4, 3]);
+  ctx.strokeStyle = lastBull ? BULL : BEAR;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(PAD_LEFT, curY);
@@ -211,18 +226,18 @@ function renderCandlestickChart(canvas, priceData, positions, closedTrades) {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Current price badge
-  ctx.fillStyle = '#3949ab';
+  // Current price badge (matching Charts tab)
+  ctx.fillStyle = lastBull ? BULL : BEAR;
   const priceLabel = formatPriceShort(lastPrice);
-  ctx.font = 'bold 10px Inter, sans-serif';
+  ctx.font = 'bold 11px Inter, sans-serif';
   const plW = ctx.measureText(priceLabel).width;
-  ctx.fillRect(W - PAD_RIGHT, curY - 9, plW + 10, 18);
-  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(W - PAD_RIGHT, curY - 10, plW + 16, 20);
+  ctx.fillStyle = '#0d1117';
   ctx.textAlign = 'left';
-  ctx.fillText(priceLabel, W - PAD_RIGHT + 5, curY + 4);
+  ctx.fillText(priceLabel, W - PAD_RIGHT + 8, curY + 4);
 
   // Time labels
-  ctx.fillStyle = '#546e7a';
+  ctx.fillStyle = '#8b949e';
   ctx.font = '10px Inter, sans-serif';
   ctx.textAlign = 'center';
   const labelEvery = Math.max(Math.floor(priceData.length / 6), 1);
