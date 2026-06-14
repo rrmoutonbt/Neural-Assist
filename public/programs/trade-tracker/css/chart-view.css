@@ -500,6 +500,48 @@
   margin: 5px 0;
 }
 
+/* ---- Drawing Tool Category Flyout ---- */
+.tv-draw-flyout {
+  background: rgba(16, 20, 30, 0.96);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(136, 170, 210, 0.15);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  min-width: 170px;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 4px 0;
+  animation: dropIn 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.tv-draw-flyout-item {
+  padding: 6px 12px;
+  color: #c9d5e3;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 100ms;
+  white-space: nowrap;
+}
+
+.tv-draw-flyout-item:hover {
+  background: rgba(136, 170, 210, 0.1);
+  color: #e6edf3;
+}
+
+.tv-draw-flyout-item.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: #6cb6ff;
+}
+
+.tv-draw-cat-btn.active {
+  background: rgba(88, 166, 255, 0.12);
+  color: #6cb6ff;
+  border-color: rgba(88, 166, 255, 0.2);
+}
+
 /* ---- Chart Navigation Toolbar ---- */
 .tv-chart-nav {
   position: absolute;

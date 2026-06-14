@@ -8,10 +8,15 @@ import { setPageTitle } from '../components/topbar.js';
 import { onViewCleanup } from '../router.js';
 import { showModal, closeModal } from '../components/modal.js';
 import { INDICATOR_CATEGORIES, INDICATOR_MAP } from '../indicators.js?v=2';
+import { TOOL_CATEGORIES, ALL_TOOLS, renderDrawing, hitTestDrawing } from '../drawingTools.js';
 import { getTrades } from '../store.js';
 import { formatCurrency } from '../utils/formatters.js';
 import { initAlerts, addAlert, removeAlert, getAlerts, checkAlerts, getActiveAlertCount } from '../components/alerts.js';
 import { showToast } from '../components/toast.js';
+import { detectPatterns } from '../ai/patternRecognition.js';
+import { predictPrice, getMarketCommentary } from '../ai/pricePrediction.js';
+import { TradingAgent, TradingCopilot } from '../ai/tradingAgent.js';
+import { compileAndRun, getScriptLibrary, saveScript, deleteScript } from '../scripting.js';
 
 const SYMBOLS = ['AAPL','TSLA','NVDA','SPY','MSFT','AMZN','GOOGL','META','BTC/USD','ETH/USD','XRP/USD','XAU/USD','EUR/USD','GBP/USD'];
 const FAV_INDICATORS_KEY = 'tt_fav_indicators';
@@ -230,6 +235,13 @@ export async function render(container) {
           </div>
         </div>
         <div class="tv-toolbar-right">
+          <button class="tv-toolbar-btn" id="ai-patterns-btn" title="AI Pattern Detection">${ICONS.indicator}<span>Patterns</span></button>
+          <button class="tv-toolbar-btn" id="ai-predict-btn" title="AI Price Prediction">${ICONS.indicator}<span>Predict</span></button>
+          <button class="tv-toolbar-btn" id="ai-agent-btn" title="AI Trading Agent">${ICONS.indicator}<span>Agent</span></button>
+          <div class="tv-separator"></div>
+          <button class="tv-toolbar-btn" id="script-editor-btn" title="Script Editor">${ICONS.indicator}<span>Script</span></button>
+          <div class="tv-separator"></div>
+          <button class="tv-toolbar-btn" id="backtest-btn" title="Backtesting">${ICONS.replay}<span>Backtest</span></button>
           <button class="tv-toolbar-btn" id="replay-btn" title="Trade Replay">${ICONS.replay}<span>Replay</span></button>
           <button class="tv-toolbar-btn" id="alert-btn" title="Price Alerts">${ICONS.bell}<span>Alerts</span><span class="tv-ind-badge" id="alert-badge" style="display:none">0</span></button>
           <div class="tv-separator"></div>
@@ -243,16 +255,15 @@ export async function render(container) {
       </div>
 
       <div class="tv-body">
-        <div class="tv-draw-sidebar">
+        <div class="tv-draw-sidebar" id="draw-sidebar">
           <button class="tv-draw-btn active" data-tool="crosshair" title="Crosshair">${ICONS.crosshair}</button>
           <div class="tv-draw-sep"></div>
-          <button class="tv-draw-btn" data-tool="trendline" title="Trendline">${ICONS.trendline}</button>
-          <button class="tv-draw-btn" data-tool="horizontal" title="Horizontal Line">${ICONS.horizontal}</button>
-          <button class="tv-draw-btn" data-tool="fibonacci" title="Fibonacci Retracement">${ICONS.fibonacci}</button>
-          <button class="tv-draw-btn" data-tool="rectangle" title="Rectangle">${ICONS.rectangle}</button>
-          <button class="tv-draw-btn" data-tool="text" title="Text Annotation">${ICONS.text}</button>
+          ${TOOL_CATEGORIES.map(cat => `
+            <button class="tv-draw-btn tv-draw-cat-btn" data-category="${cat.id}" title="${cat.name}">
+              ${cat.icon}
+            </button>
+          `).join('')}
           <div class="tv-draw-sep"></div>
-          <button class="tv-draw-btn" data-tool="measure" title="Measure">${ICONS.measure}</button>
           <button class="tv-draw-btn" data-tool="magnet" title="Magnet Mode">${ICONS.magnet}</button>
           <div class="tv-draw-sep"></div>
           <button class="tv-draw-btn tv-draw-danger" id="clear-drawings-btn" title="Clear Drawings">${ICONS.trash}</button>
@@ -321,6 +332,7 @@ export async function render(container) {
     data: [], fullData: [], viewStart: 0, visibleBars: VISIBLE_BARS, indicatorCache: {},
     isMaximized: false, magnetMode: false, showTradeReplay: false,
     settings: DEFAULT_SETTINGS(),
+    aiPatterns: [], aiPrediction: null, aiSignals: [], aiCommentary: '', showAiPatterns: false, showAiPrediction: false, showAiSignals: false,
   };
 
   function updateViewData() {
@@ -834,6 +846,19 @@ export async function render(container) {
     // Alert lines
     drawAlertLines(ctx, chartW, mainH, min, range, toY);
 
+    // AI Pattern overlays
+    if (cs.showAiPatterns && cs.aiPatterns.length > 0) {
+      drawAiPatterns(ctx, cs.aiPatterns, chartW, mainH, min, range, d, toX, toY);
+    }
+    // AI Prediction cone
+    if (cs.showAiPrediction && cs.aiPrediction) {
+      drawAiPrediction(ctx, cs.aiPrediction, chartW, mainH, min, range, d);
+    }
+    // AI Agent signals
+    if (cs.showAiSignals && cs.aiSignals.length > 0) {
+      drawAiSignals(ctx, cs.aiSignals, chartW, mainH, min, range, d, toX, toY);
+    }
+
     // Current price line
     const lastC = d[d.length - 1];
     const lastY = toY(lastC.close);
@@ -987,6 +1012,108 @@ export async function render(container) {
     }
   }
 
+  // ---- AI Pattern Overlays ----
+  function drawAiPatterns(ctx, patterns, chartW, mainH, min, range, data, toX, toY) {
+    for (const p of patterns) {
+      if (p.startIdx < 0 || p.endIdx >= data.length) continue;
+      const x1 = toX(p.startIdx) + (chartW / data.length) / 2;
+      const x2 = toX(p.endIdx) + (chartW / data.length) / 2;
+      // Highlight region
+      ctx.fillStyle = p.direction === 'bullish' ? 'rgba(38,166,154,0.08)' : 'rgba(239,83,80,0.08)';
+      const yTop = toY(Math.max(...data.slice(p.startIdx, p.endIdx + 1).map(d => d.high)));
+      const yBot = toY(Math.min(...data.slice(p.startIdx, p.endIdx + 1).map(d => d.low)));
+      ctx.fillRect(x1, yTop, x2 - x1, yBot - yTop);
+      // Border
+      ctx.strokeStyle = p.direction === 'bullish' ? '#26a69a' : '#ef5350';
+      ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.strokeRect(x1, yTop, x2 - x1, yBot - yTop);
+      ctx.setLineDash([]);
+      // Label
+      const conf = Math.round(p.confidence * 100);
+      ctx.fillStyle = p.direction === 'bullish' ? '#26a69a' : '#ef5350';
+      ctx.font = 'bold 10px Inter, sans-serif'; ctx.textAlign = 'left';
+      ctx.fillText(`${p.pattern.replace(/_/g, ' ')} ${conf}%`, x1 + 4, yTop - 4);
+      // Price target line
+      if (p.priceTarget) {
+        const tgtY = toY(p.priceTarget);
+        if (tgtY > 0 && tgtY < mainH) {
+          ctx.strokeStyle = '#ffa657'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+          ctx.beginPath(); ctx.moveTo(x2, tgtY); ctx.lineTo(chartW, tgtY); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#ffa657'; ctx.font = '9px Inter'; ctx.textAlign = 'right';
+          ctx.fillText(`Target: ${fmt(p.priceTarget)}`, chartW - 4, tgtY - 3);
+        }
+      }
+    }
+  }
+
+  // ---- AI Prediction Cone ----
+  function drawAiPrediction(ctx, pred, chartW, mainH, min, range, data) {
+    if (!pred.predictions || pred.predictions.length === 0) return;
+    const startX = (data.length / (data.length + pred.predictions.length)) * chartW;
+    const stepW = chartW / (data.length + pred.predictions.length);
+    const toY2 = (p) => mainH - ((p - min) / range) * mainH;
+    // 95% band
+    ctx.fillStyle = 'rgba(88,166,255,0.06)';
+    ctx.beginPath();
+    pred.confidenceBands.upper95.forEach((v, i) => {
+      const x = startX + i * stepW + stepW / 2;
+      i === 0 ? ctx.moveTo(x, toY2(v)) : ctx.lineTo(x, toY2(v));
+    });
+    for (let i = pred.confidenceBands.lower95.length - 1; i >= 0; i--) {
+      const x = startX + i * stepW + stepW / 2;
+      ctx.lineTo(x, toY2(pred.confidenceBands.lower95[i]));
+    }
+    ctx.closePath(); ctx.fill();
+    // 68% band
+    ctx.fillStyle = 'rgba(88,166,255,0.12)';
+    ctx.beginPath();
+    pred.confidenceBands.upper68.forEach((v, i) => {
+      const x = startX + i * stepW + stepW / 2;
+      i === 0 ? ctx.moveTo(x, toY2(v)) : ctx.lineTo(x, toY2(v));
+    });
+    for (let i = pred.confidenceBands.lower68.length - 1; i >= 0; i--) {
+      const x = startX + i * stepW + stepW / 2;
+      ctx.lineTo(x, toY2(pred.confidenceBands.lower68[i]));
+    }
+    ctx.closePath(); ctx.fill();
+    // Prediction line
+    ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    pred.predictions.forEach((p, i) => {
+      const x = startX + i * stepW + stepW / 2;
+      i === 0 ? ctx.moveTo(x, toY2(p.price)) : ctx.lineTo(x, toY2(p.price));
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    // Label
+    const lastPred = pred.predictions[pred.predictions.length - 1];
+    ctx.fillStyle = '#58a6ff'; ctx.font = 'bold 10px Inter'; ctx.textAlign = 'right';
+    ctx.fillText(`Pred: ${fmt(lastPred.price)}`, chartW - 4, toY2(lastPred.price) - 6);
+  }
+
+  // ---- AI Agent Signals ----
+  function drawAiSignals(ctx, signals, chartW, mainH, min, range, data, toX, toY) {
+    for (const sig of signals) {
+      if (sig.barIdx < 0 || sig.barIdx >= data.length) continue;
+      const x = toX(sig.barIdx) + (chartW / data.length) / 2;
+      const bar = data[sig.barIdx];
+      const isBuy = sig.action === 'BUY';
+      const y = toY(isBuy ? bar.low : bar.high);
+      // Arrow
+      ctx.fillStyle = isBuy ? '#26a69a' : '#ef5350';
+      ctx.beginPath();
+      if (isBuy) {
+        ctx.moveTo(x, y + 4); ctx.lineTo(x - 6, y + 14); ctx.lineTo(x + 6, y + 14);
+      } else {
+        ctx.moveTo(x, y - 4); ctx.lineTo(x - 6, y - 14); ctx.lineTo(x + 6, y - 14);
+      }
+      ctx.closePath(); ctx.fill();
+      // Confidence
+      ctx.font = '8px Inter'; ctx.textAlign = 'center';
+      ctx.fillText(`${Math.round(sig.confidence * 100)}%`, x, isBuy ? y + 24 : y - 18);
+    }
+  }
+
   function updateAlertBadge() {
     const badge = document.getElementById('alert-badge');
     const count = getActiveAlertCount();
@@ -1063,6 +1190,9 @@ export async function render(container) {
         ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.strokeRect(midX - 2, midY - 32, 130, 28);
         ctx.fillStyle = '#e6edf3'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
         ctx.fillText(d.label || '', midX + 4, midY - 14);
+      } else {
+        // Delegate to drawing tools module for all other types
+        renderDrawing(ctx, d, chartW, mainH, min, range, data, toX, toY);
       }
     });
   }
@@ -1164,6 +1294,10 @@ export async function render(container) {
         ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.strokeRect(lx - 4, ly - 22, tw, 20);
         ctx.fillStyle = '#ffa657'; ctx.font = '11px JetBrains Mono, monospace'; ctx.textAlign = 'left';
         ctx.fillText(labelText, lx + 2, ly - 8);
+      } else if (drawStart) {
+        // Generic preview for other 2-point tools
+        ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(drawStart.x, drawStart.y); ctx.lineTo(mx, my); ctx.stroke();
       }
       ctx.setLineDash([]);
     }
@@ -1453,16 +1587,86 @@ export async function render(container) {
     });
   });
 
-  // Drawing tools
-  document.querySelectorAll('.tv-draw-btn[data-tool]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const tool = btn.dataset.tool;
-      if (tool === 'magnet') { cs.magnetMode = !cs.magnetMode; btn.classList.toggle('active', cs.magnetMode); return; }
-      document.querySelectorAll('.tv-draw-btn[data-tool]').forEach(b => { if (b.dataset.tool !== 'magnet') b.classList.remove('active'); });
-      btn.classList.add('active');
-      cs.activeTool = tool;
-      overlayCanvas.style.cursor = tool === 'crosshair' ? 'crosshair' : 'copy';
+  // Drawing tools — delegated on sidebar
+  const drawSidebar = document.getElementById('draw-sidebar');
+  let activeFlyout = null;
+
+  function closeFlyout() {
+    if (activeFlyout) { activeFlyout.remove(); activeFlyout = null; }
+  }
+
+  function selectTool(toolKey) {
+    cs.activeTool = toolKey;
+    closeFlyout();
+    // Update active state on sidebar — remove active from all cat buttons and direct tool buttons
+    drawSidebar.querySelectorAll('.tv-draw-btn').forEach(b => {
+      if (b.dataset.tool !== 'magnet') b.classList.remove('active');
     });
+    // Highlight the category button that contains this tool
+    const toolDef = ALL_TOOLS[toolKey];
+    if (toolDef) {
+      const catBtn = drawSidebar.querySelector(`[data-category="${toolDef.category}"]`);
+      if (catBtn) catBtn.classList.add('active');
+    } else {
+      // It's crosshair or other direct button
+      const directBtn = drawSidebar.querySelector(`[data-tool="${toolKey}"]`);
+      if (directBtn) directBtn.classList.add('active');
+    }
+    overlayCanvas.style.cursor = toolKey === 'crosshair' ? 'crosshair' : 'copy';
+  }
+
+  drawSidebar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.tv-draw-btn');
+    if (!btn) return;
+
+    // Direct tool buttons (crosshair, magnet)
+    if (btn.dataset.tool) {
+      if (btn.dataset.tool === 'magnet') {
+        cs.magnetMode = !cs.magnetMode;
+        btn.classList.toggle('active', cs.magnetMode);
+        return;
+      }
+      selectTool(btn.dataset.tool);
+      return;
+    }
+
+    // Category button — show flyout
+    const catId = btn.dataset.category;
+    if (!catId) return;
+    e.stopPropagation();
+
+    const cat = TOOL_CATEGORIES.find(c => c.id === catId);
+    if (!cat) return;
+
+    closeFlyout();
+    const rect = btn.getBoundingClientRect();
+    const flyout = document.createElement('div');
+    flyout.className = 'tv-draw-flyout';
+    flyout.style.position = 'fixed';
+    flyout.style.left = (rect.right + 4) + 'px';
+    flyout.style.top = rect.top + 'px';
+    flyout.innerHTML = `
+      <div style="font-size:10px;font-weight:700;color:#8b949e;padding:6px 10px 4px;text-transform:uppercase;letter-spacing:0.05em">${cat.name}</div>
+      ${cat.tools.map(t => `
+        <div class="tv-draw-flyout-item${cs.activeTool === t.key ? ' active' : ''}" data-tool="${t.key}">
+          ${t.label}
+        </div>
+      `).join('')}
+    `;
+    document.body.appendChild(flyout);
+    activeFlyout = flyout;
+
+    flyout.addEventListener('click', (ev) => {
+      const item = ev.target.closest('[data-tool]');
+      if (item) selectTool(item.dataset.tool);
+    });
+  });
+
+  // Close flyout on outside click
+  document.addEventListener('click', (e) => {
+    if (activeFlyout && !activeFlyout.contains(e.target) && !e.target.closest('.tv-draw-cat-btn')) {
+      closeFlyout();
+    }
   });
 
   document.getElementById('clear-drawings-btn')?.addEventListener('click', () => {
@@ -1480,6 +1684,125 @@ export async function render(container) {
     if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) { e.preventDefault(); handleRedo(); }
   };
   document.addEventListener('keydown', keyHandler);
+
+  // AI Pattern Detection
+  const aiAgent = new TradingAgent();
+  const aiCopilot = new TradingCopilot();
+
+  document.getElementById('ai-patterns-btn')?.addEventListener('click', () => {
+    cs.showAiPatterns = !cs.showAiPatterns;
+    document.getElementById('ai-patterns-btn')?.classList.toggle('active', cs.showAiPatterns);
+    if (cs.showAiPatterns && cs.data.length > 0) {
+      cs.aiPatterns = detectPatterns(cs.data);
+      showToast(`${cs.aiPatterns.length} patterns detected`, 'success');
+    }
+    drawChart();
+  });
+
+  document.getElementById('ai-predict-btn')?.addEventListener('click', () => {
+    cs.showAiPrediction = !cs.showAiPrediction;
+    document.getElementById('ai-predict-btn')?.classList.toggle('active', cs.showAiPrediction);
+    if (cs.showAiPrediction && cs.data.length > 0) {
+      cs.aiPrediction = predictPrice(cs.data, 15);
+      const patterns = cs.showAiPatterns ? cs.aiPatterns : detectPatterns(cs.data);
+      cs.aiCommentary = getMarketCommentary(cs.data, patterns, cs.aiPrediction);
+      showToast(cs.aiCommentary.split('.')[0] + '.', 'info');
+    }
+    drawChart();
+  });
+
+  document.getElementById('ai-agent-btn')?.addEventListener('click', () => {
+    cs.showAiSignals = !cs.showAiSignals;
+    document.getElementById('ai-agent-btn')?.classList.toggle('active', cs.showAiSignals);
+    if (cs.showAiSignals && cs.data.length > 0) {
+      cs.aiSignals = aiAgent.getSignals(cs.data);
+      const perf = aiAgent.getPerformance(cs.data);
+      showToast(`Agent: ${cs.aiSignals.length} signals, ${perf.winRate.toFixed(0)}% win rate, ${perf.returnPct >= 0 ? '+' : ''}${perf.returnPct.toFixed(1)}% return`, 'success');
+    }
+    drawChart();
+  });
+
+  // Script Editor
+  document.getElementById('script-editor-btn')?.addEventListener('click', () => {
+    const savedScripts = getScriptLibrary();
+    const body = `
+      <div style="display:flex;gap:12px;height:360px">
+        <div style="flex:1;display:flex;flex-direction:column">
+          <label style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px">Script Editor</label>
+          <textarea id="script-source" style="flex:1;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:8px;font-family:var(--font-mono);font-size:12px;resize:none;outline:none;tab-size:2" spellcheck="false" placeholder='indicator("My Indicator")&#10;r = rsi(close, 14)&#10;plot(r, "RSI", color=#3b82f6)&#10;hline(70, color=#ef5350)&#10;hline(30, color=#26a69a)'></textarea>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <input id="script-name" type="text" placeholder="Script name..." style="flex:1;background:#161b22;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 8px;font-size:12px;outline:none">
+            <button id="script-save-btn" class="btn btn-secondary" style="font-size:12px;padding:4px 12px">Save</button>
+            <button id="script-run-btn" class="btn btn-primary" style="font-size:12px;padding:4px 12px">Run</button>
+          </div>
+          <div id="script-error" style="font-size:11px;color:#ef5350;margin-top:4px;min-height:16px"></div>
+        </div>
+        <div style="width:180px;border-left:1px solid #30363d;padding-left:12px;overflow-y:auto">
+          <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:6px;font-weight:600">Saved Scripts</div>
+          ${savedScripts.length === 0 ? '<div style="font-size:11px;color:#8b949e">No saved scripts</div>' :
+            savedScripts.map(s => `
+              <div class="script-lib-item" style="display:flex;align-items:center;justify-content:space-between;padding:4px 0;font-size:12px;color:#c9d5e3;cursor:pointer;border-bottom:1px solid #21262d" data-script-name="${s.name}">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.name}</span>
+                <button class="script-del-btn" data-del-name="${s.name}" style="background:none;border:none;color:#8b949e;cursor:pointer;font-size:10px;padding:2px 4px" title="Delete">✕</button>
+              </div>
+            `).join('')}
+        </div>
+      </div>
+    `;
+    showModal({ title: 'Custom Script Editor', body, width: '680px', actions: [
+      { label: 'Close', class: 'btn btn-secondary', onClick: closeModal }
+    ]});
+    setTimeout(() => {
+      document.getElementById('script-run-btn')?.addEventListener('click', () => {
+        const source = document.getElementById('script-source')?.value;
+        const errEl = document.getElementById('script-error');
+        if (!source?.trim()) { if (errEl) errEl.textContent = 'Enter a script'; return; }
+        const result = compileAndRun(source, cs.data);
+        if (result.error) { if (errEl) errEl.textContent = result.error; return; }
+        if (errEl) errEl.textContent = '';
+        // Add as custom indicator overlay
+        const key = 'CUSTOM_' + Date.now();
+        cs.indicatorCache[key] = result;
+        if (!cs.indicators.includes(key)) cs.indicators.push(key);
+        invalidateCache = () => { /* keep custom */ };
+        updateBadge();
+        drawChart();
+        showToast('Custom indicator applied', 'success');
+        closeModal();
+      });
+      document.getElementById('script-save-btn')?.addEventListener('click', () => {
+        const name = document.getElementById('script-name')?.value?.trim();
+        const source = document.getElementById('script-source')?.value;
+        if (!name) { showToast('Enter a script name', 'error'); return; }
+        saveScript(name, source);
+        showToast(`Script "${name}" saved`, 'success');
+      });
+      document.querySelectorAll('.script-lib-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (e.target.closest('.script-del-btn')) return;
+          const name = item.dataset.scriptName;
+          const scripts = getScriptLibrary();
+          const s = scripts.find(x => x.name === name);
+          if (s) {
+            document.getElementById('script-source').value = s.source;
+            document.getElementById('script-name').value = s.name;
+          }
+        });
+      });
+      document.querySelectorAll('.script-del-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteScript(btn.dataset.delName);
+          showToast('Script deleted', 'info');
+        });
+      });
+    }, 50);
+  });
+
+  // Backtest
+  document.getElementById('backtest-btn')?.addEventListener('click', () => {
+    window.location.hash = '#/backtest';
+  });
 
   // Price Alerts
   document.getElementById('alert-btn')?.addEventListener('click', () => {
@@ -1969,8 +2292,22 @@ export async function render(container) {
       };
       input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') commitText(); if (ev.key === 'Escape') input.remove(); });
       input.addEventListener('blur', commitText);
-    } else if (['trendline', 'rectangle', 'fibonacci', 'measure'].includes(cs.activeTool)) {
-      drawStart = { x: mx, y: my };
+    } else if (cs.activeTool !== 'crosshair') {
+      // All other tools start with a click point
+      const toolDef = ALL_TOOLS[cs.activeTool];
+      if (toolDef) {
+        if (toolDef.points === 1) {
+          // Single-click tools — create immediately
+          snapshotDrawings();
+          const { min, max } = getPriceRange();
+          const price = max - (my / L.mainH) * (max - min);
+          cs.drawings.push({ type: cs.activeTool, x: mx, y: my, price, color: '#58a6ff' });
+          drawChart();
+        } else {
+          // Multi-point tools — start drag
+          drawStart = { x: mx, y: my };
+        }
+      }
     }
   });
 
@@ -2004,6 +2341,19 @@ export async function render(container) {
         const bars = cs.data.length > 0 ? Math.abs(Math.floor((mx - drawStart.x) / (L.chartW / cs.data.length))) : 0;
         const label = `${diff2 >= 0 ? '+' : ''}${fmt(diff2)} (${pct.toFixed(2)}%) | ${bars} bars`;
         cs.drawings.push({ type: 'measure', x1: drawStart.x, y1: drawStart.y, x2: mx, y2: my, label });
+      } else {
+        // All other 2-point tools from drawing tools module
+        const { min, max } = getPriceRange();
+        const range = max - min;
+        const price1 = max - (drawStart.y / L.mainH) * range;
+        const price2 = max - (my / L.mainH) * range;
+        cs.drawings.push({
+          type: cs.activeTool,
+          x1: drawStart.x, y1: drawStart.y,
+          x2: mx, y2: my,
+          price1, price2,
+          color: '#58a6ff'
+        });
       }
       drawChart();
     }
