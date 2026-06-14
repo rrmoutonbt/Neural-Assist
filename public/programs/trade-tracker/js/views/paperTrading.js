@@ -279,9 +279,9 @@ function calcUsedMargin(ma) {
 
 function calcMarginLevel(ma) {
   if (ma.positions.length === 0) return Infinity;
-  let eq = ma.balance, tot = 0;
-  for (const p of ma.positions) { const d = p.side === 'buy' ? 1 : -1; eq += (getMockPrice(p.pair) - p.entryPrice) * p.quantity * d; tot += p.notionalValue || (p.entryPrice * p.quantity); }
-  return tot === 0 ? Infinity : eq / tot;
+  let eq = ma.balance, usedMargin = 0;
+  for (const p of ma.positions) { const d = p.side === 'buy' ? 1 : -1; eq += (getMockPrice(p.pair) - p.entryPrice) * p.quantity * d; usedMargin += p.marginUsed || 0; }
+  return usedMargin === 0 ? Infinity : eq / usedMargin;
 }
 
 // ── Main Render ──────────────────────────────
@@ -293,6 +293,9 @@ export async function render(container) {
   let bottomTab = 'positions';
   let orderWidgetCollapsed = false;
   let chartCleanup = null;
+  let slActive = false;
+  let tpActive = false;
+  let slTpCheckInterval = null;
 
   function getTotalEquity() {
     let v = 0;
@@ -347,6 +350,9 @@ export async function render(container) {
         <button class="pt-panel-tab ${bottomTab === 'closed' ? 'active' : ''}" data-panel="closed" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'closed' ? '#2962ff' : 'transparent'};color:${bottomTab === 'closed' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
           Closed Positions
         </button>
+        <button class="pt-panel-tab ${bottomTab === 'equity' ? 'active' : ''}" data-panel="equity" style="padding:8px 12px;font-size:12px;border:none;cursor:pointer;font-weight:500;border-bottom:2px solid ${bottomTab === 'equity' ? '#2962ff' : 'transparent'};color:${bottomTab === 'equity' ? TEXT : TEXT_DIM};background:transparent;margin-right:4px">
+          Equity Curve
+        </button>
         <span style="color:${TEXT_DIM};padding:0 8px">›</span>
         <div style="flex:1"></div>
         <div style="display:flex;gap:16px;align-items:center">
@@ -356,7 +362,7 @@ export async function render(container) {
           ${isMargin ? `
           <div><span style="color:${TEXT_DIM}">MARGIN USED</span> <span class="font-mono" style="color:#ff9800;font-weight:600">${formatCurrency(usedMargin)}</span></div>
           <div><span style="color:${TEXT_DIM}">MARGIN AVAILABLE</span> <span class="font-mono" style="color:${TEXT};font-weight:600">${formatCurrency(marginAvail)}</span></div>
-          <div><span style="color:${TEXT_DIM}">MARGIN LEVEL ⓘ</span> <span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '---' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
+          <div><span style="color:${TEXT_DIM}">MARGIN LEVEL ⓘ</span> <span class="font-mono" style="color:${marginLevel > 0.5 ? BULL : marginLevel > MARGIN_CALL_RATIO ? '#ff9800' : BEAR};font-weight:600">${marginLevel === Infinity ? '–' : (marginLevel * 100).toFixed(1) + '%'}</span></div>
           ` : ''}
         </div>
         <button id="pt-close-all-btn" style="background:#363a45;color:${TEXT};border:1px solid #4a4e59;border-radius:4px;padding:4px 14px;font-size:11px;cursor:pointer;font-weight:500;margin-left:12px;display:${positions.length > 0 ? 'block' : 'none'}">Close All ▾</button>
@@ -364,7 +370,7 @@ export async function render(container) {
 
       <!-- Positions Table -->
       <div style="flex-shrink:0;max-height:180px;overflow-y:auto;background:${BG};font-size:12px">
-        ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : renderClosedTable(closedTrades, isMargin)}
+        ${bottomTab === 'positions' ? renderPositionsTable(positions, isMargin) : bottomTab === 'equity' ? `<div id="pt-equity-curve-container" style="width:100%;height:100%;min-height:160px"></div>` : renderClosedTable(closedTrades, isMargin)}
       </div>
 
       <!-- Floating Order Widget -->
@@ -388,14 +394,18 @@ export async function render(container) {
           </div>
           <div style="flex:1"></div>
           <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">RISK</button>
-          <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">SL</button>
-          <button class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid #363a45;border-radius:4px;cursor:pointer;background:transparent;color:${TEXT_DIM}">TP</button>
+          <button id="pt-sl-toggle" class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid ${slActive ? BEAR : '#363a45'};border-radius:4px;cursor:pointer;background:${slActive ? 'rgba(239,83,80,0.15)' : 'transparent'};color:${slActive ? BEAR : TEXT_DIM}">SL</button>
+          <button id="pt-tp-toggle" class="pt-otype-btn" style="padding:4px 12px;font-size:10px;font-weight:600;border:1px solid ${tpActive ? BULL : '#363a45'};border-radius:4px;cursor:pointer;background:${tpActive ? 'rgba(38,166,154,0.15)' : 'transparent'};color:${tpActive ? BULL : TEXT_DIM}">TP</button>
           <button id="pt-widget-toggle" style="background:transparent;border:1px solid #363a45;border-radius:4px;color:${TEXT_DIM};cursor:pointer;padding:3px 8px;font-size:12px;line-height:1">⌃</button>
         </div>
         <div style="text-align:center;padding:6px 14px;font-size:12px;color:${TEXT_DIM}">
           Init. Margin: <strong style="color:${TEXT}">${initMargin}</strong> (∞)
           ${isMargin ? `<select id="pt-order-leverage" style="background:#2a2e39;color:${TEXT};border:1px solid #363a45;border-radius:4px;padding:2px 6px;font-size:11px;margin-left:8px">${LEVERAGE_OPTIONS.map(l => `<option value="${l}" ${l === 3 ? 'selected' : ''}>${l}x</option>`).join('')}</select>` : ''}
         </div>
+        ${slActive || tpActive ? `<div style="display:flex;gap:8px;padding:4px 14px;align-items:center;justify-content:center">
+          ${slActive ? `<div style="display:flex;align-items:center;gap:4px"><span style="color:${BEAR};font-size:11px;font-weight:600">SL:</span><input id="pt-sl-price" type="number" step="0.01" placeholder="Stop Loss Price" style="width:110px;background:#2a2e39;border:1px solid ${BEAR};border-radius:4px;color:${TEXT};padding:4px 8px;font-size:12px;font-family:var(--font-mono);outline:none"></div>` : ''}
+          ${tpActive ? `<div style="display:flex;align-items:center;gap:4px"><span style="color:${BULL};font-size:11px;font-weight:600">TP:</span><input id="pt-tp-price" type="number" step="0.01" placeholder="Take Profit Price" style="width:110px;background:#2a2e39;border:1px solid ${BULL};border-radius:4px;color:${TEXT};padding:4px 8px;font-size:12px;font-family:var(--font-mono);outline:none"></div>` : ''}
+        </div>` : ''}
         <div style="display:flex;align-items:stretch;padding:6px 14px 12px;gap:0">
           <button id="pt-sell-btn" style="flex:1;background:transparent;border:2px solid ${BEAR};border-radius:6px;padding:8px 6px;cursor:pointer;text-align:center">
             <div class="font-mono" style="font-size:17px;font-weight:700;color:${BEAR};line-height:1.2">${fmtPrice(sellPrice)}</div>
@@ -450,7 +460,9 @@ export async function render(container) {
             ${isMargin ? `<td class="font-mono" style="padding:6px 8px;text-align:right;color:${TEXT}">${formatCurrency(p.marginUsed)}</td>` : ''}
             <td class="font-mono" style="padding:6px 8px;text-align:right;color:${TEXT}">${formatCurrency(exposure)}</td>
             <td class="font-mono" style="padding:6px 8px;text-align:right;color:${pnl >= 0 ? BULL : BEAR};font-weight:600">${pnl >= 0 ? '+' : ''}${formatCurrency(pnl)}</td>
-            <td style="padding:6px 8px;text-align:center">
+            <td style="padding:6px 8px;text-align:center;white-space:nowrap">
+              <button class="paper-edit-btn" data-idx="${i}" style="background:transparent;border:1px solid #363a45;color:${TEXT_DIM};border-radius:3px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:2px" title="Edit position">✎</button>
+              <button class="paper-notes-btn" data-idx="${i}" style="background:transparent;border:1px solid ${p.notes ? '#2962ff' : '#363a45'};color:${p.notes ? '#2962ff' : TEXT_DIM};border-radius:3px;padding:3px 8px;font-size:11px;cursor:pointer;margin-right:2px" title="${p.notes || 'No notes'}">📝</button>
               <button class="paper-close-btn" data-idx="${i}" style="background:transparent;border:1px solid #363a45;color:${TEXT_DIM};border-radius:3px;padding:3px 10px;font-size:11px;cursor:pointer" title="Close position">✕</button>
             </td>
           </tr>`;
@@ -473,6 +485,7 @@ export async function render(container) {
         <th style="padding:6px 8px;font-weight:500;text-align:right">Qty</th>
         <th style="padding:6px 8px;font-weight:500;text-align:right">P&L</th>
         <th style="padding:6px 8px;font-weight:500">Closed</th>
+        <th style="padding:6px 8px;font-weight:500;text-align:center">Notes</th>
       </tr></thead>
       <tbody>
         ${closedTrades.slice().reverse().slice(0, 50).map(t => `<tr style="border-bottom:1px solid #1e222d">
@@ -484,6 +497,7 @@ export async function render(container) {
           <td class="font-mono" style="padding:5px 8px;text-align:right;color:${TEXT}">${t.quantity.toFixed(4)}</td>
           <td class="font-mono" style="padding:5px 8px;text-align:right;color:${t.pnl >= 0 ? BULL : BEAR};font-weight:600">${t.pnl >= 0 ? '+' : ''}${formatCurrency(t.pnl)}</td>
           <td style="padding:5px 8px;font-size:11px;color:${TEXT_DIM}">${new Date(t.closedAt).toLocaleDateString()}</td>
+          <td style="padding:5px 8px;text-align:center"><span style="cursor:default;opacity:${t.notes ? 1 : 0.3}" title="${t.notes ? t.notes.replace(/"/g, '&quot;') : 'No notes'}">📝</span></td>
         </tr>`).join('')}
       </tbody>
     </table>`;
@@ -531,6 +545,9 @@ export async function render(container) {
     const notionalValue = amount * leverage;
     const quantity = notionalValue / price;
 
+    const slPrice = slActive ? Number(document.getElementById('pt-sl-price')?.value) || 0 : 0;
+    const tpPrice = tpActive ? Number(document.getElementById('pt-tp-price')?.value) || 0 : 0;
+
     if (isMargin) {
       const liquidationPrice = calcLiquidationPrice(price, side, leverage);
       ps.marginAccount.balance -= amount;
@@ -541,7 +558,10 @@ export async function render(container) {
         notionalValue: Math.round(notionalValue * 100) / 100,
         marginUsed: amount,
         liquidationPrice: Math.round(liquidationPrice * 10000) / 10000,
-        openedAt: new Date().toISOString()
+        openedAt: new Date().toISOString(),
+        stopLoss: slPrice || null,
+        takeProfit: tpPrice || null,
+        notes: ''
       });
     } else {
       ps.balance -= amount;
@@ -549,7 +569,10 @@ export async function render(container) {
         pair: selectedPair, side, amount,
         entryPrice: Math.round(price * 10000) / 10000,
         quantity: Math.round(quantity * 10000) / 10000,
-        openedAt: new Date().toISOString()
+        openedAt: new Date().toISOString(),
+        stopLoss: slPrice || null,
+        takeProfit: tpPrice || null,
+        notes: ''
       });
       ps.equityCurve.push({ date: new Date().toISOString(), equity: Math.round(getTotalEquity() * 100) / 100 });
     }
@@ -584,6 +607,166 @@ export async function render(container) {
     while (positions.length > 0) { handleClosePosition(0); }
   }
 
+  // ── Stop Loss / Take Profit checker ──
+  function checkStopLossAndTakeProfit() {
+    const isMargin = ps.activeTab === 'margin';
+    const positions = isMargin ? ps.marginAccount.positions : ps.positions;
+    let triggered = false;
+    for (let i = positions.length - 1; i >= 0; i--) {
+      const p = positions[i];
+      if (!p.stopLoss && !p.takeProfit) continue;
+      const curPrice = getMockPrice(p.pair);
+      const isBuy = p.side === 'buy';
+      let reason = null;
+      if (p.stopLoss) {
+        if (isBuy && curPrice <= p.stopLoss) reason = 'Stop Loss';
+        if (!isBuy && curPrice >= p.stopLoss) reason = 'Stop Loss';
+      }
+      if (p.takeProfit) {
+        if (isBuy && curPrice >= p.takeProfit) reason = 'Take Profit';
+        if (!isBuy && curPrice <= p.takeProfit) reason = 'Take Profit';
+      }
+      if (reason) {
+        showToast(`${reason} triggered on ${p.pair} ${p.side.toUpperCase()}`, reason === 'Take Profit' ? 'success' : 'warning');
+        handleClosePosition(i);
+        triggered = true;
+      }
+    }
+    if (triggered) renderTradingPanel();
+  }
+
+  // ── Edit position modal ──
+  function showEditPositionModal(idx) {
+    const isMargin = ps.activeTab === 'margin';
+    const positions = isMargin ? ps.marginAccount.positions : ps.positions;
+    const p = positions[idx];
+    if (!p) return;
+    showModal({
+      title: `Edit Position — ${p.pair} ${p.side.toUpperCase()}`,
+      body: `
+        <div style="display:flex;flex-direction:column;gap:12px;padding:8px 0">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--color-text-muted);margin-bottom:4px">Stop Loss Price</label>
+            <input id="edit-sl-price" type="number" step="0.01" value="${p.stopLoss || ''}" placeholder="None" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg-secondary);color:var(--color-text);font-size:14px;font-family:var(--font-mono)">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--color-text-muted);margin-bottom:4px">Take Profit Price</label>
+            <input id="edit-tp-price" type="number" step="0.01" value="${p.takeProfit || ''}" placeholder="None" style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg-secondary);color:var(--color-text);font-size:14px;font-family:var(--font-mono)">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--color-text-muted);margin-bottom:4px">Trade Notes</label>
+            <textarea id="edit-trade-notes" rows="4" placeholder="Enter trade notes..." style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--color-border);background:var(--color-bg-secondary);color:var(--color-text);font-size:13px;resize:vertical;font-family:inherit">${p.notes || ''}</textarea>
+          </div>
+        </div>
+      `,
+      width: '420px',
+      actions: [
+        { label: 'Cancel', class: 'btn btn-secondary', onClick: closeModal },
+        { label: 'Save', class: 'btn btn-primary', onClick: () => {
+          const sl = Number(document.getElementById('edit-sl-price')?.value) || 0;
+          const tp = Number(document.getElementById('edit-tp-price')?.value) || 0;
+          const notes = document.getElementById('edit-trade-notes')?.value || '';
+          p.stopLoss = sl || null;
+          p.takeProfit = tp || null;
+          p.notes = notes;
+          savePaperState(ps);
+          closeModal();
+          showToast('Position updated', 'success');
+          renderTradingPanel();
+        }}
+      ]
+    });
+  }
+
+  // ── Equity Curve renderer ──
+  function renderEquityCurve() {
+    const container = document.getElementById('pt-equity-curve-container');
+    if (!container) return;
+    const curve = ps.equityCurve || [];
+    const startBal = ps.startingBalance || STARTING_BALANCE;
+    const currentEq = getTotalEquity();
+    const totalReturn = ((currentEq - startBal) / startBal) * 100;
+    const tradeCount = (ps.closedTrades || []).length;
+
+    // Calculate max drawdown
+    let peak = startBal, maxDD = 0;
+    for (const pt of curve) {
+      if (pt.equity > peak) peak = pt.equity;
+      const dd = (peak - pt.equity) / peak * 100;
+      if (dd > maxDD) maxDD = dd;
+    }
+
+    container.innerHTML = `
+      <div style="display:flex;gap:24px;padding:8px 16px;align-items:center;flex-wrap:wrap">
+        <div><span style="color:${TEXT_DIM};font-size:11px">EQUITY</span> <span class="font-mono" style="color:${TEXT};font-weight:600;font-size:13px">${formatCurrency(currentEq)}</span></div>
+        <div><span style="color:${TEXT_DIM};font-size:11px">RETURN</span> <span class="font-mono" style="color:${totalReturn >= 0 ? BULL : BEAR};font-weight:600;font-size:13px">${totalReturn >= 0 ? '+' : ''}${totalReturn.toFixed(2)}%</span></div>
+        <div><span style="color:${TEXT_DIM};font-size:11px">MAX DRAWDOWN</span> <span class="font-mono" style="color:${BEAR};font-weight:600;font-size:13px">${maxDD.toFixed(2)}%</span></div>
+        <div><span style="color:${TEXT_DIM};font-size:11px">TRADES</span> <span class="font-mono" style="color:${TEXT};font-weight:600;font-size:13px">${tradeCount}</span></div>
+      </div>
+      <canvas id="pt-equity-canvas" style="width:100%;height:110px;display:block"></canvas>
+    `;
+
+    const canvas = document.getElementById('pt-equity-canvas');
+    if (!canvas || curve.length < 2) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+
+    const PAD = { top: 8, bottom: 4, left: 4, right: 4 };
+    const cW = W - PAD.left - PAD.right;
+    const cH = H - PAD.top - PAD.bottom;
+
+    const eqs = curve.map(c => c.equity);
+    let minE = Math.min(...eqs, startBal);
+    let maxE = Math.max(...eqs, startBal);
+    const range = maxE - minE || 1;
+    minE -= range * 0.05; maxE += range * 0.05;
+    const totalRange = maxE - minE;
+
+    ctx.fillStyle = BG;
+    ctx.fillRect(0, 0, W, H);
+
+    // Grid lines
+    ctx.strokeStyle = GRID; ctx.lineWidth = 0.5;
+    for (let i = 0; i <= 4; i++) {
+      const y = PAD.top + (cH / 4) * i;
+      ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
+    }
+
+    // Starting balance dashed line
+    const balY = PAD.top + (1 - (startBal - minE) / totalRange) * cH;
+    ctx.setLineDash([4, 3]);
+    ctx.strokeStyle = TEXT_DIM; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.left, balY); ctx.lineTo(W - PAD.right, balY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Equity line
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < curve.length; i++) {
+      const x = PAD.left + (i / (curve.length - 1)) * cW;
+      const y = PAD.top + (1 - (curve[i].equity - minE) / totalRange) * cH;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    const lastEq = curve[curve.length - 1].equity;
+    ctx.strokeStyle = lastEq >= startBal ? BULL : BEAR;
+    ctx.stroke();
+
+    // Fill under line
+    const lastX = PAD.left + cW;
+    const lastY = PAD.top + (1 - (lastEq - minE) / totalRange) * cH;
+    ctx.lineTo(lastX, PAD.top + cH);
+    ctx.lineTo(PAD.left, PAD.top + cH);
+    ctx.closePath();
+    ctx.fillStyle = lastEq >= startBal ? 'rgba(38,166,154,0.08)' : 'rgba(239,83,80,0.08)';
+    ctx.fill();
+  }
+
   // ── Initial layout: Chart View + Trading Overlay ──
   container.innerHTML = `
     <div style="display:flex;flex-direction:column;height:calc(100vh - 56px);margin:-24px -32px;overflow:hidden">
@@ -608,17 +791,47 @@ export async function render(container) {
 
   // Render the trading panel
   renderTradingPanel();
+  if (bottomTab === 'equity') requestAnimationFrame(() => renderEquityCurve());
+
+  // ── SL/TP check interval ──
+  slTpCheckInterval = setInterval(() => {
+    checkStopLossAndTakeProfit();
+    // Record equity curve snapshot every 30 seconds while positions are open
+    const positions = ps.activeTab === 'margin' ? ps.marginAccount.positions : ps.positions;
+    if (positions.length > 0) {
+      const lastSnap = ps.equityCurve[ps.equityCurve.length - 1];
+      const elapsed = lastSnap ? Date.now() - new Date(lastSnap.date).getTime() : Infinity;
+      if (elapsed >= 30000) {
+        ps.equityCurve.push({ date: new Date().toISOString(), equity: Math.round(getTotalEquity() * 100) / 100 });
+        savePaperState(ps);
+      }
+    }
+  }, 2000);
 
   // ── Delegated listeners ──
   container.addEventListener('click', (e) => {
     const closeBtn = e.target.closest('.paper-close-btn');
     if (closeBtn) { handleClosePosition(Number(closeBtn.dataset.idx)); return; }
 
+    const editBtn = e.target.closest('.paper-edit-btn');
+    if (editBtn) { showEditPositionModal(Number(editBtn.dataset.idx)); return; }
+
+    const notesBtn = e.target.closest('.paper-notes-btn');
+    if (notesBtn) { showEditPositionModal(Number(notesBtn.dataset.idx)); return; }
+
+    if (e.target.closest('#pt-sl-toggle')) { slActive = !slActive; renderTradingPanel(); return; }
+    if (e.target.closest('#pt-tp-toggle')) { tpActive = !tpActive; renderTradingPanel(); return; }
+
     const acctTab = e.target.closest('.pt-acct-tab');
     if (acctTab) { ps.activeTab = acctTab.dataset.tab; savePaperState(ps); renderTradingPanel(); return; }
 
     const panelTab = e.target.closest('.pt-panel-tab');
-    if (panelTab) { bottomTab = panelTab.dataset.panel; renderTradingPanel(); return; }
+    if (panelTab) {
+      bottomTab = panelTab.dataset.panel;
+      renderTradingPanel();
+      if (bottomTab === 'equity') requestAnimationFrame(() => renderEquityCurve());
+      return;
+    }
 
     const tfBtn = e.target.closest('.pt-tf-btn');
     if (tfBtn) { renderTradingPanel(); return; }
@@ -653,5 +866,7 @@ export async function render(container) {
     }
   });
 
-  onViewCleanup(() => {});
+  onViewCleanup(() => {
+    if (slTpCheckInterval) { clearInterval(slTpCheckInterval); slTpCheckInterval = null; }
+  });
 }

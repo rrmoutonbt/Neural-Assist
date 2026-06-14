@@ -14,6 +14,9 @@ import { initAlerts, addAlert, removeAlert, getAlerts, checkAlerts, getActiveAle
 import { showToast } from '../components/toast.js';
 
 const SYMBOLS = ['AAPL','TSLA','NVDA','SPY','MSFT','AMZN','GOOGL','META','BTC/USD','ETH/USD','XRP/USD','XAU/USD','EUR/USD','GBP/USD'];
+const FAV_INDICATORS_KEY = 'tt_fav_indicators';
+function loadFavoriteIndicators() { try { return JSON.parse(localStorage.getItem(FAV_INDICATORS_KEY)) || []; } catch { return []; } }
+function saveFavoriteIndicators(favs) { localStorage.setItem(FAV_INDICATORS_KEY, JSON.stringify(favs)); }
 const TIMEFRAMES = ['1m','5m','15m','1h','4h','1D','1W','1M'];
 
 // Premium Lucide-quality SVG icons — rounded joins, 1.75 stroke, pixel-hinted
@@ -100,24 +103,90 @@ export async function render(container) {
   setPageTitle('Chart');
 
   // Build categorized indicator menu HTML
-  const indicatorMenuHTML = INDICATOR_CATEGORIES.map(cat => `
-    <div class="tv-ind-category" data-cat="${cat.name}">
-      <div class="tv-ind-cat-header" style="border-left: 3px solid ${cat.color}">
-        <span class="tv-ind-cat-chevron">${ICONS.chevRight}</span>
-        <span class="tv-ind-cat-name">${cat.name}</span>
-        <span class="tv-ind-cat-count">${cat.count}</span>
+  let favIndicators = loadFavoriteIndicators();
+
+  // Flat lookup: key -> {label, color, category}
+  const allIndicatorsFlat = {};
+  INDICATOR_CATEGORIES.forEach(cat => cat.indicators.forEach(ind => { allIndicatorsFlat[ind.key] = { ...ind, category: cat.name, catColor: cat.color }; }));
+
+  function buildIndicatorMenuHTML() {
+    let activeKeys;
+    try { activeKeys = cs.indicators; } catch(e) { activeKeys = ['VOL', 'BB', 'MACD']; }
+    const favKeys = favIndicators.filter(k => allIndicatorsFlat[k]);
+
+    // Active section
+    const activeSection = activeKeys.length > 0 ? `
+      <div class="tv-ind-category tv-ind-section-active" data-cat="__active__">
+        <div class="tv-ind-cat-header" style="border-left: 3px solid #3b82f6">
+          <span class="tv-ind-cat-chevron" style="transform:rotate(90deg)">${ICONS.chevRight}</span>
+          <span class="tv-ind-cat-name">Active</span>
+          <span class="tv-ind-cat-count">${activeKeys.length}</span>
+        </div>
+        <div class="tv-ind-cat-items" style="display:block">
+          ${activeKeys.map(key => {
+            const ind = allIndicatorsFlat[key];
+            if (!ind) return '';
+            const isFav = favIndicators.includes(key);
+            return `<div class="tv-indicator-item tv-ind-active-item" data-indicator="${key}" style="background:rgba(88,166,255,0.06)">
+              <input type="checkbox" checked />
+              <span class="tv-ind-dot" style="background:${ind.color}"></span>
+              <span class="tv-ind-label">${ind.label}</span>
+              <span class="tv-ind-fav-btn" data-fav-key="${key}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" style="margin-left:auto;cursor:pointer;font-size:13px;opacity:${isFav ? '1' : '0.3'};color:#ffa657;transition:opacity 150ms">${isFav ? '★' : '☆'}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+
+    // Favorites section
+    const favSection = favKeys.length > 0 ? `
+      <div class="tv-ind-category tv-ind-section-favs" data-cat="__favorites__">
+        <div class="tv-ind-cat-header" style="border-left: 3px solid #ffa657">
+          <span class="tv-ind-cat-chevron" style="transform:rotate(90deg)">${ICONS.chevRight}</span>
+          <span class="tv-ind-cat-name">★ Favorites</span>
+          <span class="tv-ind-cat-count">${favKeys.length}</span>
+        </div>
+        <div class="tv-ind-cat-items" style="display:block">
+          ${favKeys.map(key => {
+            const ind = allIndicatorsFlat[key];
+            if (!ind) return '';
+            const isActive = activeKeys.includes(key);
+            return `<div class="tv-indicator-item tv-ind-fav-item" data-indicator="${key}">
+              <input type="checkbox" ${isActive ? 'checked' : ''} />
+              <span class="tv-ind-dot" style="background:${ind.color}"></span>
+              <span class="tv-ind-label">${ind.label}</span>
+              <span class="tv-ind-fav-btn" data-fav-key="${key}" title="Remove from favorites" style="margin-left:auto;cursor:pointer;font-size:13px;opacity:1;color:#ffa657;transition:opacity 150ms">★</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>` : '';
+
+    // Category sections
+    const categoryHTML = INDICATOR_CATEGORIES.map(cat => `
+      <div class="tv-ind-category" data-cat="${cat.name}">
+        <div class="tv-ind-cat-header" style="border-left: 3px solid ${cat.color}">
+          <span class="tv-ind-cat-chevron">${ICONS.chevRight}</span>
+          <span class="tv-ind-cat-name">${cat.name}</span>
+          <span class="tv-ind-cat-count">${cat.count}</span>
+        </div>
+        <div class="tv-ind-cat-items" style="display:none">
+          ${cat.indicators.map(ind => {
+            const isActive = activeKeys.includes(ind.key);
+            const isFav = favIndicators.includes(ind.key);
+            return `<label class="tv-indicator-item" data-indicator="${ind.key}" style="${isActive ? 'background:rgba(88,166,255,0.06)' : ''}">
+              <input type="checkbox" ${isActive ? 'checked' : ''} />
+              <span class="tv-ind-dot" style="background:${ind.color}"></span>
+              <span class="tv-ind-label">${ind.label}</span>
+              <span class="tv-ind-fav-btn" data-fav-key="${ind.key}" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}" style="margin-left:auto;cursor:pointer;font-size:13px;opacity:${isFav ? '1' : '0.3'};color:#ffa657;transition:opacity 150ms">${isFav ? '★' : '☆'}</span>
+            </label>`;
+          }).join('')}
+        </div>
       </div>
-      <div class="tv-ind-cat-items" style="display:none">
-        ${cat.indicators.map(ind => `
-          <label class="tv-indicator-item" data-indicator="${ind.key}">
-            <input type="checkbox" ${ind.key === 'VOL' ? 'checked' : ''} />
-            <span class="tv-ind-dot" style="background:${ind.color}"></span>
-            <span class="tv-ind-label">${ind.label}</span>
-          </label>
-        `).join('')}
-      </div>
-    </div>
-  `).join('');
+    `).join('');
+
+    return activeSection + favSection + categoryHTML;
+  }
+
+  const indicatorMenuHTML = buildIndicatorMenuHTML();
 
   container.innerHTML = `
     <div class="tv-chart-wrapper">
@@ -148,7 +217,7 @@ export async function render(container) {
             <button class="tv-toolbar-btn" id="indicator-btn" title="Indicators">
               ${ICONS.indicator}
               <span>Indicators</span>
-              <span class="tv-ind-badge" id="ind-badge">1</span>
+              <span class="tv-ind-badge" id="ind-badge">3</span>
               ${ICONS.chevDown}
             </button>
             <div class="tv-dropdown-menu tv-indicator-menu" id="indicator-menu">
@@ -246,7 +315,7 @@ export async function render(container) {
   const SCROLL_STEP = 20;
   const cs = {
     symbol: 'AAPL', timeframe: '1D', chartType: 'candlestick',
-    indicators: ['VOL'], activeTool: 'crosshair',
+    indicators: ['VOL', 'BB', 'MACD'], activeTool: 'crosshair',
     drawings: [], undoStack: [], redoStack: [],
     drawingInProgress: null, activeMeasurement: null,
     data: [], fullData: [], viewStart: 0, visibleBars: VISIBLE_BARS, indicatorCache: {},
@@ -1266,17 +1335,45 @@ export async function render(container) {
   // ---- Indicator dropdown with categories ----
   const indicatorMenu = document.getElementById('indicator-menu');
   const indicatorSearchInput = document.getElementById('indicator-search-input');
+  const indicatorCategoriesEl = document.getElementById('indicator-categories');
+
+  // Rebuild indicator menu HTML (Active + Favorites + Categories)
+  function refreshIndicatorMenu() {
+    if (!indicatorCategoriesEl) return;
+    indicatorCategoriesEl.innerHTML = buildIndicatorMenuHTML();
+  }
 
   document.getElementById('indicator-btn').addEventListener('click', (e) => {
     e.stopPropagation();
     document.querySelectorAll('.tv-dropdown-menu.open').forEach(m => m.classList.remove('open'));
     indicatorMenu.classList.toggle('open');
-    if (indicatorMenu.classList.contains('open') && indicatorSearchInput) { indicatorSearchInput.value = ''; indicatorSearchInput.focus(); filterIndicators(''); }
+    if (indicatorMenu.classList.contains('open')) {
+      refreshIndicatorMenu();
+      if (indicatorSearchInput) { indicatorSearchInput.value = ''; indicatorSearchInput.focus(); }
+    }
   });
 
-  // Category collapse/expand
-  indicatorMenu.querySelectorAll('.tv-ind-cat-header').forEach(header => {
-    header.addEventListener('click', (e) => {
+  // Delegated event handler for entire indicator menu (handles checkboxes, stars, headers)
+  indicatorCategoriesEl.addEventListener('click', (e) => {
+    // ── Star/favorite button ──
+    const favBtn = e.target.closest('.tv-ind-fav-btn');
+    if (favBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const key = favBtn.dataset.favKey;
+      if (favIndicators.includes(key)) {
+        favIndicators = favIndicators.filter(k => k !== key);
+      } else {
+        favIndicators.push(key);
+      }
+      saveFavoriteIndicators(favIndicators);
+      refreshIndicatorMenu();
+      return;
+    }
+
+    // ── Category header collapse/expand ──
+    const header = e.target.closest('.tv-ind-cat-header');
+    if (header) {
       e.stopPropagation();
       const cat = header.closest('.tv-ind-category');
       const items = cat.querySelector('.tv-ind-cat-items');
@@ -1284,26 +1381,32 @@ export async function render(container) {
       const isOpen = items.style.display !== 'none';
       items.style.display = isOpen ? 'none' : 'block';
       chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
-    });
+      return;
+    }
   });
 
-  // Indicator checkboxes
-  indicatorMenu.querySelectorAll('.tv-indicator-item input').forEach(cb => {
-    cb.addEventListener('change', (e) => {
-      e.stopPropagation();
-      const key = e.target.closest('.tv-indicator-item').dataset.indicator;
-      if (e.target.checked) { if (!cs.indicators.includes(key)) cs.indicators.push(key); }
-      else { cs.indicators = cs.indicators.filter(k => k !== key); }
-      invalidateCache();
-      updateBadge();
-      drawChart();
-    });
+  // Delegated checkbox change handler
+  indicatorCategoriesEl.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[type="checkbox"]');
+    if (!cb) return;
+    e.stopPropagation();
+    const key = cb.closest('.tv-indicator-item')?.dataset?.indicator;
+    if (!key) return;
+    if (cb.checked) { if (!cs.indicators.includes(key)) cs.indicators.push(key); }
+    else { cs.indicators = cs.indicators.filter(k => k !== key); }
+    invalidateCache();
+    updateBadge();
+    drawChart();
+    refreshIndicatorMenu();
   });
 
   // Search filter
   function filterIndicators(query) {
     const q = query.toLowerCase();
-    indicatorMenu.querySelectorAll('.tv-ind-category').forEach(cat => {
+    indicatorCategoriesEl.querySelectorAll('.tv-ind-category').forEach(cat => {
+      const catName = cat.dataset.cat || '';
+      // Always show Active and Favorites when no query
+      if (!q && (catName === '__active__' || catName === '__favorites__')) { cat.style.display = ''; return; }
       const items = cat.querySelectorAll('.tv-indicator-item');
       let anyVisible = false;
       items.forEach(item => {
