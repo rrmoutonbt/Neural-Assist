@@ -20,7 +20,9 @@ const Trading = (function() {
     positions: []
   };
 
-  const TF_BAR_COUNTS = { '1m': 90, '5m': 80, '15m': 70, '1H': 60, '4H': 50, '1D': 40 };
+  let chartController = null;
+
+  const TF_BAR_COUNTS = { '1m': 120, '5m': 100, '15m': 90, '1H': 75, '4H': 60, '1D': 50 };
 
   // DOM cache
   let elements = {};
@@ -87,11 +89,14 @@ const Trading = (function() {
       });
     });
 
-    // Redraw chart on resize
+    // Redraw chart on resize (destroy + recreate for new dimensions)
     let resizeTimer;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(updateChart, 150);
+      resizeTimer = setTimeout(() => {
+        if (chartController) { chartController.destroy(); chartController = null; }
+        updateChart();
+      }, 200);
     });
   }
 
@@ -262,14 +267,18 @@ const Trading = (function() {
 
   function updateChart() {
     if (!elements.priceChart) return;
+    if (chartController) { chartController.destroy(); chartController = null; }
     const count = TF_BAR_COUNTS[state.timeframe] || 60;
     const data = MockData.generateCandlestickData({
       count,
       timeframe: state.timeframe,
       symbol: state.pair,
     });
-    Charts.candlestick(elements.priceChart, data);
-    // Cache the most recent frame so live ticks can mutate the last bar
+    chartController = Charts.candlestick(elements.priceChart, data, {
+      showRSI: true,
+      showEMA9: true,
+      showVWAP: true,
+    });
     state.candles = data;
   }
 
@@ -278,7 +287,16 @@ const Trading = (function() {
     setInterval(() => {
       updateOrderBook();
       addNewTrade();
+      animateTick();
     }, 2000);
+  }
+
+  function animateTick() {
+    if (!chartController || !state.candles || !state.candles.length) return;
+    const last = state.candles[state.candles.length - 1];
+    const drift = (Math.random() - 0.48) * 0.005;
+    const newPrice = last.close * (1 + drift);
+    chartController.updateTick({ price: newPrice });
   }
 
   function updateOrderBook() {

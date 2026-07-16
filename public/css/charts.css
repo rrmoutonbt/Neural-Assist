@@ -1,0 +1,291 @@
+/* charts.css - Chart Styling */
+
+/* Chart Container */
+.chart-container {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  position: relative;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.chart-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.chart-legend {
+  display: flex;
+  gap: var(--space-4);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.legend-dot.cyan { background: var(--color-cyan); }
+.legend-dot.green { background: var(--color-green); }
+.legend-dot.gold { background: var(--color-gold); }
+.legend-dot.purple { background: var(--color-purple); }
+
+/* Canvas Charts */
+.chart-canvas {
+  width: 100%;
+  height: 300px;
+  display: block;
+}
+
+.chart-canvas-lg {
+  height: 520px;
+}
+
+.chart-canvas-sm {
+  height: 200px;
+}
+
+/* Price Display */
+.price-display {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.price-current {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.price-change {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.price-change.positive { color: var(--color-green); }
+.price-change.negative { color: var(--color-red); }
+
+/* Timeframe Selector */
+.timeframe-selector {
+  display: flex;
+  gap: var(--space-1);
+  background: var(--color-surface);
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+}
+
+.timeframe-btn {
+  padding: var(--space-2) var(--space-3);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.timeframe-btn:hover {
+  color: var(--color-text);
+}
+
+.timeframe-btn.active {
+  background: var(--color-bg-card);
+  color: var(--color-gold);
+}
+
+/* Order Book */
+.orderbook {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.orderbook-side {
+  display: flex;
+  flex-direction: column;
+}
+
+.orderbook-header {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+}
+
+.orderbook-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  position: relative;
+}
+
+.orderbook-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  opacity: 0.15;
+  pointer-events: none;
+}
+
+.orderbook-bid .orderbook-row::before {
+  background: var(--color-green);
+}
+
+.orderbook-ask .orderbook-row::before {
+  background: var(--color-red);
+  left: 0;
+  right: auto;
+}
+
+.orderbook-price.bid { color: var(--color-green); }
+.orderbook-price.ask { color: var(--color-red); }
+
+/* Trades List */
+.trades-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.trade-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.trade-row:last-child {
+  border-bottom: none;
+}
+
+.trade-price.buy { color: var(--color-green); }
+.trade-price.sell { color: var(--color-red); }
+
+.trade-time {
+  color: var(--color-text-dim);
+}
+
+/* Mini Chart */
+.mini-chart {
+  width: 100px;
+  height: 40px;
+}
+
+.mini-chart svg {
+  width: 100%;
+  height: 100%;
+}
+
+.mini-chart path.up {
+  stroke: var(--color-green);
+  fill: rgba(16, 185, 129, 0.1);
+}
+
+.mini-chart path.down {
+  stroke: var(--color-red);
+  fill: rgba(239, 68, 68, 0.1);
+}
+
+/* Candlestick */
+.candle {
+  stroke-width: 1;
+}
+
+.candle.bullish rect { fill: var(--color-green); }
+.candle.bullish line { stroke: var(--color-green); }
+.candle.bearish rect { fill: var(--color-red); }
+.candle.bearish line { stroke: var(--color-red); }
+
+/* Donut Chart */
+.donut-chart {
+  position: relative;
+  width: 200px;
+  height: 200px;
+}
+
+.donut-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.donut-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.donut-label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* Stat Bars */
+.stat-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.stat-bar-label {
+  width: 80px;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+}
+
+.stat-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width var(--transition-slow);
+}
+
+.stat-bar-fill.cyan { background: var(--color-cyan); }
+.stat-bar-fill.green { background: var(--color-green); }
+.stat-bar-fill.gold { background: var(--color-gold); }
+.stat-bar-fill.purple { background: var(--color-purple); }
+
+.stat-bar-value {
+  width: 50px;
+  text-align: right;
+  font-size: 0.875rem;
+  font-family: var(--font-mono);
+}
