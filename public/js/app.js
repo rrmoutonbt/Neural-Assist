@@ -154,10 +154,25 @@ const App = {
         API.banking.getAccounts().catch(() => null)
       ]);
 
-      // Render KPIs
+      // TradeLocker account data (GenFX Demo accounts)
+      const tradeLockerAccounts = [
+        { id: 'tl-2323405', name: 'Convergence Alpha', accountNumber: 'D#2323405', type: 'tradelocker', balance: 833.63, equity: 751.97, closedPL: -164.59, status: 'active', platform: 'TradeLocker', server: 'GENFX', leverage: '1:500' },
+        { id: 'tl-2239952', name: 'paper', accountNumber: 'D#2239952', type: 'tradelocker', balance: 6988.82, equity: 6540.03, closedPL: -3004.53, status: 'active', platform: 'TradeLocker', server: 'GENFX', leverage: '1:500' },
+        { id: 'tl-2340741', name: 'Paper2', accountNumber: 'D#2340741', type: 'tradelocker', balance: 1000.00, equity: 1000.00, closedPL: 0, status: 'active', platform: 'TradeLocker', server: 'GENFX', leverage: '1:500' },
+      ];
+      const tlTotalEquity = tradeLockerAccounts.reduce((s, a) => s + a.equity, 0);
+
+      // Render KPIs — include TradeLocker equity in totals
       const kpiContainer = document.getElementById('kpi-grid');
       if (kpiContainer && kpiResponse?.data?.kpis) {
-        kpiContainer.innerHTML = kpiResponse.data.kpis.map(kpi => Components.kpiCard({
+        const kpis = kpiResponse.data.kpis.map(kpi => {
+          // Add TradeLocker equity to Total Assets
+          if (kpi.id === 'total-assets') kpi.value += tlTotalEquity;
+          return kpi;
+        });
+        // Add Trading Equity KPI
+        kpis.push({ id: 'trading-equity', label: 'Trading Equity', value: tlTotalEquity, change: -1.8, icon: '\u{1F4CA}', color: 'purple' });
+        kpiContainer.innerHTML = kpis.map(kpi => Components.kpiCard({
           label: Utils.escapeHtml(kpi.label),
           value: kpi.value,
           change: kpi.change,
@@ -166,40 +181,90 @@ const App = {
         })).join('');
       } else if (kpiContainer) {
         kpiContainer.innerHTML = [
-          Components.kpiCard({ label: 'Total Assets', value: 0, change: 0, icon: '\u{1F4B0}', color: 'cyan' }),
+          Components.kpiCard({ label: 'Total Assets', value: tlTotalEquity, change: 0, icon: '\u{1F4B0}', color: 'cyan' }),
           Components.kpiCard({ label: 'Banking Balance', value: 0, change: 0, icon: '\u{1F3E6}', color: 'gold' }),
-          Components.kpiCard({ label: 'Investments', value: 0, change: 0, icon: '\u{1F4C8}', color: 'purple' }),
+          Components.kpiCard({ label: 'Trading Equity', value: tlTotalEquity, change: -1.8, icon: '\u{1F4CA}', color: 'purple' }),
           Components.kpiCard({ label: 'Active Loans', value: 0, change: 0, icon: '\u{1F4CB}', color: 'green' })
         ].join('');
       }
 
-      // Render portfolio chart from real transaction data
+      // Render portfolio chart from real transaction data, with Binance BTC fallback
       const chartContainer = document.getElementById('portfolio-chart');
       if (chartContainer) {
         try {
           const chartRes = await API.get('/kpis/chart').catch(() => null);
           if (chartRes?.data?.chartData?.length > 1) {
             Charts.lineChart(chartContainer, chartRes.data.chartData, { color: Charts.colors.cyan });
+          } else if (typeof BinanceService !== 'undefined') {
+            // Fallback: show BTC 30-day price as portfolio proxy
+            const klines = await BinanceService.getKlines('BTCUSDT', '1d', 30).catch(() => null);
+            if (klines && klines.length > 1) {
+              const chartData = klines.map(k => ({ value: k.close }));
+              Charts.lineChart(chartContainer, chartData, { color: Charts.colors.cyan });
+            } else {
+              chartContainer.innerHTML = '<div class="flex items-center justify-center" style="height:200px;color:var(--text-muted);font-size:0.875rem;">No transaction history yet. Deposit funds to see portfolio performance.</div>';
+            }
           } else {
             chartContainer.innerHTML = '<div class="flex items-center justify-center" style="height:200px;color:var(--text-muted);font-size:0.875rem;">No transaction history yet. Deposit funds to see portfolio performance.</div>';
           }
         } catch (e) {
           chartContainer.innerHTML = '<div class="flex items-center justify-center" style="height:200px;color:var(--text-muted);font-size:0.875rem;">Portfolio chart unavailable</div>';
         }
+
+        // Wire up timeframe buttons to load BTC klines for different periods
+        if (typeof BinanceService !== 'undefined') {
+          const timeframeMap = { '1D': ['1h', 24], '1W': ['4h', 42], '1M': ['1d', 30], '3M': ['1d', 90], '1Y': ['1w', 52] };
+          document.querySelectorAll('.timeframe-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              document.querySelectorAll('.timeframe-btn').forEach(b => b.classList.remove('active'));
+              btn.classList.add('active');
+              const tf = timeframeMap[btn.textContent.trim()];
+              if (!tf) return;
+              try {
+                const klines = await BinanceService.getKlines('BTCUSDT', tf[0], tf[1]);
+                if (klines && klines.length > 1) {
+                  chartContainer.innerHTML = '';
+                  Charts.lineChart(chartContainer, klines.map(k => ({ value: k.close })), { color: Charts.colors.cyan });
+                }
+              } catch (e) { /* keep current chart on failure */ }
+            });
+          });
+        }
       }
 
-      // Render accounts from API
-      if (accountsResponse?.data?.accounts?.length > 0) {
-        this.renderDashboardAccounts(accountsResponse.data.accounts.slice(0, 4));
+      // Render accounts from API + TradeLocker accounts
+      const bankAccounts = accountsResponse?.data?.accounts?.slice(0, 2) || [];
+      const allDashAccounts = [
+        ...bankAccounts,
+        ...tradeLockerAccounts.map(tl => ({
+          id: tl.id,
+          name: tl.name,
+          accountNumber: tl.accountNumber,
+          balance: tl.equity,
+          status: tl.status,
+          type: 'tradelocker',
+          _tradelocker: tl
+        }))
+      ];
+      if (allDashAccounts.length > 0) {
+        this.renderDashboardAccounts(allDashAccounts.slice(0, 5));
       } else {
         const accountsList = document.getElementById('accounts-list');
         if (accountsList) accountsList.innerHTML = '<div class="card text-center text-muted py-4">No accounts yet. <a href="accounts.html" class="text-cyan">Open an account</a> to get started.</div>';
       }
 
-      // Crypto holdings from API
+      // Crypto holdings from API, enriched with real Binance prices
       const cryptoResponse = await API.crypto.getHoldings().catch(() => null);
       if (cryptoResponse?.data?.holdings?.length > 0) {
-        this.renderHoldings(cryptoResponse.data.holdings.slice(0, 5));
+        const mockHoldings = cryptoResponse.data.holdings.slice(0, 5);
+        // Render immediately with API/mock data
+        this.renderHoldings(mockHoldings);
+        // Then enrich with live Binance prices in the background
+        if (typeof BinanceService !== 'undefined') {
+          BinanceService.enrichHoldings(mockHoldings).then(enriched => {
+            this.renderHoldings(enriched);
+          }).catch(() => { /* keep mock data on failure */ });
+        }
       } else {
         const holdingsList = document.getElementById('holdings-list');
         if (holdingsList) holdingsList.innerHTML = '<div class="card text-center text-muted py-4">No crypto holdings yet.</div>';
@@ -1148,20 +1213,45 @@ const App = {
     const container = document.getElementById('accounts-list');
     if (!container) return;
 
-    container.innerHTML = accounts.map(acc => `
-      <div class="card">
-        <div class="flex justify-between items-start mb-2">
-          <span class="text-sm text-muted">${Utils.escapeHtml(acc.name)}</span>
-          ${Components.badge(Utils.escapeHtml(acc.status), 'success')}
-        </div>
-        <div class="text-xl font-bold font-mono mb-1">${Utils.formatCurrency(acc.balance)}</div>
-        <div class="text-xs text-dim mb-3">${Utils.escapeHtml(acc.accountNumber)}</div>
-        <div class="flex gap-2">
-          <button class="btn btn-primary btn-sm" onclick="App.showQuickDeposit('${acc.id}', '${Utils.escapeHtml(acc.name)}')" style="flex:1;font-size:0.75rem;">+ Deposit</button>
-          <button class="btn btn-ghost btn-sm" onclick="App.showQuickWithdraw('${acc.id}', '${Utils.escapeHtml(acc.name)}', ${acc.balance})" style="flex:1;font-size:0.75rem;">- Withdraw</button>
-        </div>
-      </div>
-    `).join('');
+    container.innerHTML = accounts.map(acc => {
+      if (acc.type === 'tradelocker') {
+        const tl = acc._tradelocker || {};
+        const plClass = tl.closedPL >= 0 ? 'text-green' : 'text-red';
+        const plSign = tl.closedPL >= 0 ? '+' : '';
+        return `
+          <div class="card" style="border-left: 3px solid rgba(33,150,243,0.5);">
+            <div class="flex justify-between items-start mb-2">
+              <span class="text-sm text-muted">${Utils.escapeHtml(acc.name)}</span>
+              <span style="display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:10px;background:rgba(16,185,129,0.12);color:#10b981;font-size:0.65rem;font-weight:600;text-transform:uppercase;">
+                <span style="width:5px;height:5px;border-radius:50%;background:#10b981;"></span> Active
+              </span>
+            </div>
+            <div class="text-xl font-bold font-mono mb-1">${Utils.formatCurrency(tl.equity)}</div>
+            <div class="text-xs text-dim mb-2">${Utils.escapeHtml(acc.accountNumber)} · ${tl.platform}</div>
+            <div class="flex justify-between text-xs mb-3">
+              <span class="text-muted">Balance: <span class="font-mono">${Utils.formatCurrency(tl.balance)}</span></span>
+              <span class="text-muted">P&L: <span class="font-mono ${plClass}">${plSign}${Utils.formatCurrency(tl.closedPL)}</span></span>
+            </div>
+            <div class="flex gap-2">
+              <a href="institutional-trader.html" class="btn btn-primary btn-sm" style="flex:1;font-size:0.75rem;">Trade</a>
+              <a href="programs.html" class="btn btn-ghost btn-sm" style="flex:1;font-size:0.75rem;">Details</a>
+            </div>
+          </div>`;
+      }
+      return `
+        <div class="card">
+          <div class="flex justify-between items-start mb-2">
+            <span class="text-sm text-muted">${Utils.escapeHtml(acc.name)}</span>
+            ${Components.badge(Utils.escapeHtml(acc.status), 'success')}
+          </div>
+          <div class="text-xl font-bold font-mono mb-1">${Utils.formatCurrency(acc.balance)}</div>
+          <div class="text-xs text-dim mb-3">${Utils.escapeHtml(acc.accountNumber)}</div>
+          <div class="flex gap-2">
+            <button class="btn btn-primary btn-sm" onclick="App.showQuickDeposit('${acc.id}', '${Utils.escapeHtml(acc.name)}')" style="flex:1;font-size:0.75rem;">+ Deposit</button>
+            <button class="btn btn-ghost btn-sm" onclick="App.showQuickWithdraw('${acc.id}', '${Utils.escapeHtml(acc.name)}', ${acc.balance})" style="flex:1;font-size:0.75rem;">- Withdraw</button>
+          </div>
+        </div>`;
+    }).join('');
   },
 
   showQuickDeposit(accountId, accountName) {
@@ -1543,9 +1633,40 @@ const App = {
       this.currentPage = 'holdings';
 
       const res = await API.crypto.getHoldings().catch(() => null);
-      const holdings = res?.data?.holdings || [];
+      let holdings = res?.data?.holdings || [];
       const summary = res?.data?.summary || {};
 
+      // Render immediately with mock/API data, then enrich with Binance
+      this._renderHoldingsPage(holdings, summary);
+
+      // Enrich with real Binance prices in background
+      if (typeof BinanceService !== 'undefined' && holdings.length > 0) {
+        BinanceService.enrichHoldings(holdings).then(enriched => {
+          // Recalculate allocations based on real values
+          const totalValue = enriched.reduce((sum, h) => sum + (h.value || 0), 0);
+          enriched = enriched.map(h => ({
+            ...h,
+            allocation: totalValue > 0 ? parseFloat(((h.value / totalValue) * 100).toFixed(1)) : h.allocation
+          }));
+          // Recalculate summary from enriched data
+          const realSummary = {
+            totalValue: totalValue,
+            change24h: enriched.reduce((sum, h) => sum + ((h._binanceData?.change || 0) * (h.amount || 0)), 0),
+            change24hPercent: totalValue > 0 ? enriched.reduce((sum, h) => sum + ((h.change24h || 0) * ((h.value || 0) / totalValue)), 0) : 0,
+            unrealizedPL: summary.unrealizedPL || 0,
+            unrealizedPLPercent: summary.unrealizedPLPercent || 0,
+            assetCount: enriched.length
+          };
+          this._renderHoldingsPage(enriched, realSummary);
+        }).catch(() => { /* keep mock data on failure */ });
+      }
+    } catch (error) {
+      this.handleError(error, 'Holdings initialization failed');
+    }
+  },
+
+  // Helper to render the full holdings page (used for initial + Binance-enriched render)
+  _renderHoldingsPage(holdings, summary) {
       // KPIs
       const kpiGrid = document.getElementById('holdings-kpi-grid');
       if (kpiGrid) {
@@ -1605,9 +1726,6 @@ const App = {
           `;
         }).join('');
       }
-    } catch (error) {
-      this.handleError(error, 'Holdings initialization failed');
-    }
   },
 
   // =========================================================
@@ -2624,15 +2742,23 @@ const App = {
                   <div class="ci-cards">
                     <div class="ci-card" onclick="window._launchAccount('paper2-tl')">
                       <div class="ci-card-header">
-                        <div class="ci-card-dot" style="background:#22c55e;"></div>
-                        <span class="ci-card-title">Live Custodial TradeLocker Account</span>
+                        <div class="ci-card-dot" style="background:#3b82f6;"></div>
+                        <span class="ci-card-title">Demo GenFX TradeLocker</span>
                       </div>
                       <div class="ci-card-details">
                         <div>Account: <span class="ci-live">D#2340741</span> (Paper2)</div>
                         <div>Platform: TradeLocker &bull; GenFX</div>
-                        <div>Server: GENFX</div>
-                        <div>Leverage: 1:500 &bull; USD</div>
-                        <div>Status: <span style="color:#22c55e;">Active</span> &bull; 07/16/2026</div>
+                        <div>Server: GENFX &bull; Leverage: 1:500 &bull; USD</div>
+                        <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
+                          <div style="display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; font-size:0.8rem;">
+                            <div>Balance: <b style="color:#22c55e;">$1,000.00</b></div>
+                            <div>Credit: <b>$0.00</b></div>
+                            <div>Equity: <b>$0.00</b></div>
+                            <div>Open P&amp;L: <b>$0.00</b></div>
+                            <div>Closed P&amp;L: <b>$0.00</b></div>
+                          </div>
+                        </div>
+                        <div style="margin-top:4px;">Status: <span style="color:#22c55e;">Active</span> &bull; 07/16/2026</div>
                       </div>
                     </div>
                     <div class="ci-card" onclick="window._launchAccount('demo-tl')">
@@ -2756,7 +2882,7 @@ const App = {
                 'melvin': '/trader-dashboard/BeeBot_Sentient_Trader_tradelockerv3.10_MELVIN.html'
               };
               const names = {
-                'paper2-tl': 'Live Custodial TradeLocker - D#2340741 (Paper2)',
+                'paper2-tl': 'Demo GenFX TradeLocker - D#2340741 (Paper2)',
                 'demo-tl': 'Demo GenFX TradeLocker - D#2239952',
                 'demo-mt5': 'Demo MT5 Bridge',
                 'live-mt5': 'Live MT5',

@@ -13,6 +13,7 @@ import { render as renderChartView } from './views/chartView.js?v=5';
 import { render as renderRiskManagement } from './views/riskManagement.js';
 import { render as renderPaperTrading } from './views/paperTrading.js';
 import { render as renderBacktest } from './views/backtestView.js';
+import { render as renderMarketData } from './views/marketData.js';
 
 registerRoute('/dashboard', renderDashboard);
 registerRoute('/trades', renderTradeLog);
@@ -22,6 +23,7 @@ registerRoute('/chart', renderChartView);
 registerRoute('/risk', renderRiskManagement);
 registerRoute('/paper', renderPaperTrading);
 registerRoute('/backtest', renderBacktest);
+registerRoute('/market-data', renderMarketData);
 registerRoute('/settings', renderSettings);
 
 document.addEventListener('DOMContentLoaded', () => {

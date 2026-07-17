@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Programs - Banc of El Trust International</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/charts.css">
+  <link rel="stylesheet" href="css/utilities.css">
+  <style>
+    .programs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-6); }
+    .program-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); position: relative; overflow: hidden; transition: all var(--transition-fast); cursor: pointer; text-decoration: none; color: inherit; display: block; }
+    .program-card:hover { border-color: var(--color-gold); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+    .program-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+    .program-card.video::before { background: linear-gradient(90deg, #3949ab, #7b1fa2); }
+    .program-card.audio::before { background: linear-gradient(90deg, #1a8a4a, #3949ab); }
+    .program-card.crm::before { background: linear-gradient(90deg, #1a8a4a, #b8860b); }
+    .program-card.i-platform::before { background: linear-gradient(90deg, #7b1fa2, #e91e63); }
+    .program-icon.i-platform { background: rgba(123, 31, 162, 0.1); }
+    .program-card.construct::before { background: linear-gradient(90deg, #00d4ff, #7b1fa2); }
+    .program-icon.construct { background: rgba(0, 212, 255, 0.1); }
+    .program-card.coming-soon::before { background: var(--color-border); }
+    .program-card.coming-soon { opacity: 0.6; cursor: default; }
+    .program-card.coming-soon:hover { transform: none; box-shadow: none; border-color: var(--color-border); }
+    .program-icon { width: 56px; height: 56px; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; font-size: 1.75rem; margin-bottom: var(--space-4); }
+    .program-icon.video { background: rgba(57, 73, 171, 0.1); }
+    .program-icon.audio { background: rgba(26, 138, 74, 0.1); }
+    .program-icon.coming-soon { background: var(--color-surface); }
+    .program-title { font-size: 1.125rem; font-weight: 600; margin-bottom: var(--space-2); }
+    .program-desc { font-size: 0.875rem; color: var(--color-text-muted); line-height: 1.5; margin-bottom: var(--space-4); }
+    .program-meta { display: flex; align-items: center; gap: var(--space-3); }
+    .program-tag { font-size: 0.75rem; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); }
+    .tl-accounts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: var(--space-5); }
+    .tl-account-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; transition: all var(--transition-fast); }
+    .tl-account-card:hover { border-color: var(--color-gold); box-shadow: var(--shadow-md); }
+    .tl-card-header { padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--color-border); display: flex; justify-content: space-between; align-items: center; }
+    .tl-card-header h3 { font-size: 1rem; font-weight: 600; }
+    .tl-card-header .tl-acct-num { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-text-muted); margin-top: 2px; }
+    .tl-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; }
+    .tl-status.active { background: rgba(16,185,129,0.12); color: #10b981; }
+    .tl-card-body { padding: var(--space-4) var(--space-5); }
+    .tl-kpi-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-4); }
+    .tl-kpi { text-align: center; }
+    .tl-kpi-label { font-size: 0.7rem; color: var(--color-text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .tl-kpi-value { font-size: 1.1rem; font-weight: 700; font-family: var(--font-mono); }
+    .tl-kpi-value.positive { color: #10b981; }
+    .tl-kpi-value.negative { color: #ef5350; }
+    .tl-chart-container { height: 60px; margin-bottom: var(--space-4); border-radius: var(--radius-sm); overflow: hidden; }
+    .tl-details { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); padding: var(--space-3); background: var(--color-surface); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-size: 0.8rem; }
+    .tl-detail-item { display: flex; justify-content: space-between; }
+    .tl-detail-label { color: var(--color-text-dim); }
+    .tl-detail-value { font-family: var(--font-mono); color: var(--color-text); }
+    .tl-actions { display: flex; gap: var(--space-2); }
+    .tl-actions .btn { flex: 1; font-size: 0.8rem; padding: var(--space-2) var(--space-3); }
+    .live-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 12px; background: rgba(16,185,129,0.12); color: #10b981; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: livePulse 1.5s ease-in-out infinite; }
+    @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 2L2 9l14 7 14-7-14-7zM2 23l14 7 14-7M2 16l14 7 14-7"/>
+          </svg>
+          <div>
+            <h1>Banc of El</h1>
+            <span>Trust International</span>
+          </div>
+        </div>
+      </div>
+      <nav>
+        <div class="nav-section">
+          <div class="nav-section-title">Overview</div>
+          <a href="dashboard.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>Dashboard</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Trading</div>
+          <a href="trading.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+            <span>Trading</span>
+          </a>
+          <a href="wallet.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 10H2M7 15h4"/></svg>
+            <span>Wallet</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Banking</div>
+          <a href="accounts.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg>
+            <span>Accounts</span>
+          </a>
+          <a href="loans.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span>Loans</span>
+          </a>
+          <a href="transactions.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg>
+            <span>Transactions</span>
+          </a>
+          <a href="programs.html" class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 8l5 3-5 3V8z"/></svg>
+            <span>Programs</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Crypto Treasury</div>
+          <a href="crypto/treasury.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <span>Treasury</span>
+          </a>
+          <a href="crypto/holdings.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>Holdings</span>
+          </a>
+          <a href="crypto/defi.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+            <span>DeFi</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Unified</div>
+          <a href="unified/total-assets.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <span>Total Assets</span>
+          </a>
+          <a href="unified/portfolio.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+            <span>Portfolio</span>
+          </a>
+          <a href="unified/ai-insights.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg>
+            <span>AI Insights</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Asset Management</div>
+          <a href="aum.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2M7 11h4"/></svg>
+            <span>AUM</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Reports</div>
+          <a href="reports.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            <span>Executive Reports</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Library</div>
+          <a href="library.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
+            <span>Library</span>
+          </a>
+        </div>
+        <div class="nav-section nav-collapsible">
+          <div class="nav-section-title nav-toggle" onclick="this.parentElement.classList.toggle('expanded')">
+            <span>Administration</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-chevron"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <div class="nav-collapse-content">
+            <a href="admin/compliance.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Compliance</span>
+            </a>
+            <a href="admin/kyc.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+              <span>KYC Management</span>
+            </a>
+            <a href="admin/system.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+              <span>System Health</span>
+            </a>
+          </div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Institutional</div>
+          <a href="institutional-trader.html" class="nav-item nav-protected">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/><path d="M6 8h2M6 12h2M14 8h4M14 12h4"/></svg>
+            <span>Institutional Trader</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-lock"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Control Room</div>
+          <a href="blockchain-control-room/login.html" class="nav-item nav-protected">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>Blockchain Control</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-lock"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">JD</div>
+          <div class="user-details">
+            <div class="user-name">John Doe</div>
+            <div class="user-role">Administrator</div>
+            <div class="user-email" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis;"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <header class="header">
+        <div class="header-left">
+          <button id="menu-toggle" class="btn btn-ghost md:hidden" aria-label="Toggle navigation menu">&#9776;</button>
+          <div class="header-title"><h1>Programs</h1></div>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-ghost btn-sm" aria-label="Notifications">&#128276;</button>
+          <a href="dashboard.html" class="btn btn-ghost btn-sm" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none;" aria-label="Exit to Dashboard">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Exit
+          </a>
+          <button class="btn btn-primary btn-sm" onclick="App.logout()" aria-label="Logout">Logout</button>
+        </div>
+      </header>
+
+      <main class="page-content">
+        <div class="container">
+          <section class="section" style="margin-bottom: var(--space-8);">
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">TradeLocker Accounts</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: var(--space-1);">GenFX Demo accounts — TradeLocker platform</p>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="live-badge"><span class="live-dot"></span>Live</span>
+              </div>
+            </div>
+            <div class="tl-accounts-grid" id="tl-accounts">
+
+              <div class="tl-account-card">
+                <div class="tl-card-header">
+                  <div>
+                    <h3>Convergence Alpha</h3>
+                    <div class="tl-acct-num">D#2323405 · GenFX Demo</div>
+                  </div>
+                  <span class="tl-status active"><span class="live-dot"></span> Active</span>
+                </div>
+                <div class="tl-card-body">
+                  <div class="tl-kpi-row">
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Balance</div>
+                      <div class="tl-kpi-value">$833.63</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Equity</div>
+                      <div class="tl-kpi-value">$751.97</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Closed P&amp;L</div>
+                      <div class="tl-kpi-value negative">-$164.59</div>
+                    </div>
+                  </div>
+                  <div class="tl-chart-container" id="tl-chart-2323405"></div>
+                  <div class="tl-details">
+                    <div class="tl-detail-item"><span class="tl-detail-label">Platform</span><span class="tl-detail-value">TradeLocker</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Server</span><span class="tl-detail-value">GENFX</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Leverage</span><span class="tl-detail-value">1:500</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Currency</span><span class="tl-detail-value">USD</span></div>
+                  </div>
+                  <div class="tl-actions">
+                    <a href="institutional-trader.html" class="btn btn-primary btn-sm">Trade</a>
+                    <button class="btn btn-ghost btn-sm">Details</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tl-account-card">
+                <div class="tl-card-header">
+                  <div>
+                    <h3>paper</h3>
+                    <div class="tl-acct-num">D#2239952 · GenFX Demo</div>
+                  </div>
+                  <span class="tl-status active"><span class="live-dot"></span> Active</span>
+                </div>
+                <div class="tl-card-body">
+                  <div class="tl-kpi-row">
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Balance</div>
+                      <div class="tl-kpi-value">$6,988.82</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Equity</div>
+                      <div class="tl-kpi-value">$6,540.03</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Closed P&amp;L</div>
+                      <div class="tl-kpi-value negative">-$3,004.53</div>
+                    </div>
+                  </div>
+                  <div class="tl-chart-container" id="tl-chart-2239952"></div>
+                  <div class="tl-details">
+                    <div class="tl-detail-item"><span class="tl-detail-label">Platform</span><span class="tl-detail-value">TradeLocker</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Server</span><span class="tl-detail-value">GENFX</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Leverage</span><span class="tl-detail-value">1:500</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Currency</span><span class="tl-detail-value">USD</span></div>
+                  </div>
+                  <div class="tl-actions">
+                    <a href="institutional-trader.html" class="btn btn-primary btn-sm">Trade</a>
+                    <button class="btn btn-ghost btn-sm">Details</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tl-account-card">
+                <div class="tl-card-header">
+                  <div>
+                    <h3>Paper2</h3>
+                    <div class="tl-acct-num">D#2340741 · GenFX Demo</div>
+                  </div>
+                  <span class="tl-status active"><span class="live-dot"></span> Active</span>
+                </div>
+                <div class="tl-card-body">
+                  <div class="tl-kpi-row">
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Balance</div>
+                      <div class="tl-kpi-value">$1,000.00</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Equity</div>
+                      <div class="tl-kpi-value">$1,000.00</div>
+                    </div>
+                    <div class="tl-kpi">
+                      <div class="tl-kpi-label">Closed P&amp;L</div>
+                      <div class="tl-kpi-value positive">$0.00</div>
+                    </div>
+                  </div>
+                  <div class="tl-chart-container" id="tl-chart-2340741"></div>
+                  <div class="tl-details">
+                    <div class="tl-detail-item"><span class="tl-detail-label">Platform</span><span class="tl-detail-value">TradeLocker</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Server</span><span class="tl-detail-value">GENFX</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Leverage</span><span class="tl-detail-value">1:500</span></div>
+                    <div class="tl-detail-item"><span class="tl-detail-label">Currency</span><span class="tl-detail-value">USD</span></div>
+                  </div>
+                  <div class="tl-actions">
+                    <a href="institutional-trader.html" class="btn btn-primary btn-sm">Trade</a>
+                    <button class="btn btn-ghost btn-sm">Details</button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="section-header">
+              <div>
+                <h2 class="section-title">Utility Programs</h2>
+                <p style="color: var(--color-text-muted); font-size: 0.875rem; margin-top: var(--space-1);">Tools for video, audio, transcription, and more</p>
+              </div>
+            </div>
+            <div class="programs-grid" id="programs-grid">
+              <a href="/vaudio/" class="program-card video">
+                <div class="program-icon video">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-blue)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 8l5 3-5 3V8z"/></svg>
+                </div>
+                <div class="program-title">Video2Text</div>
+                <div class="program-desc">Transcribe uploaded videos and audio files into text. Supports MP4, WebM, MP3, WAV, and more.</div>
+                <div class="program-meta">
+                  <span class="program-tag">Video</span>
+                  <span class="program-tag">Audio</span>
+                  <span class="program-tag">Transcription</span>
+                </div>
+              </a>
+
+              <a href="programs/deal-flow-crm/index.html" class="program-card video">
+                <div class="program-icon video">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-blue)" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+                </div>
+                <div class="program-title">Deal Flow CRM</div>
+                <div class="program-desc">AI-powered deal management platform for tracking, validating, and managing equity deals with Mastery AI document extraction and real-time analytics.</div>
+                <div class="program-meta">
+                  <span class="program-tag">CRM</span>
+                  <span class="program-tag">AI Extraction</span>
+                  <span class="program-tag">Deal Management</span>
+                  <span class="program-tag">Equity Tracking</span>
+                </div>
+              </a>
+
+              <a href="/i-platform/dashboard" class="program-card i-platform">
+                <div class="program-icon i-platform">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7b1fa2" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                </div>
+                <div class="program-title">"i" Visual Intelligence</div>
+                <div class="program-desc">AI-powered text-to-image and text-to-video generation platform. Create 8K images and 4K/60fps videos with synchronized audio using 72B parameter models.</div>
+                <div class="program-meta">
+                  <span class="program-tag">Video</span>
+                  <span class="program-tag">Image</span>
+                  <span class="program-tag">Audio</span>
+                  <span class="program-tag">AI Generation</span>
+                </div>
+              </a>
+
+              <a href="programs/trade-tracker/index.html" class="program-card crm">
+                <div class="program-icon" style="background: rgba(26,138,74,0.1);">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1a8a4a" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+                </div>
+                <div class="program-title">Trade Tracker</div>
+                <div class="program-desc">Full trade journal with portfolio tracking, P&L analytics, win rate metrics, and performance visualization. Log trades, track open positions, and analyze your trading performance.</div>
+                <div class="program-meta">
+                  <span class="program-tag">Trading</span>
+                  <span class="program-tag">Portfolio</span>
+                  <span class="program-tag">Analytics</span>
+                  <span class="program-tag">Journal</span>
+                </div>
+              </a>
+
+              <a href="programs/neural-assistant/neural_assistant_web_interface.html" class="program-card i-platform">
+                <div class="program-icon i-platform">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7b1fa2" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg>
+                </div>
+                <div class="program-title">Neural Assistant</div>
+                <div class="program-desc">AI-powered conversational assistant with multi-provider support, conversation management, and an intelligent search engine interface.</div>
+                <div class="program-meta">
+                  <span class="program-tag">AI</span>
+                  <span class="program-tag">Assistant</span>
+                  <span class="program-tag">Search</span>
+                  <span class="program-tag">Conversational</span>
+                </div>
+              </a>
+
+              <a href="programs/construct-universal/index.html" class="program-card construct">
+                <div class="program-icon construct">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <div class="program-title">Construct Universal</div>
+                <div class="program-desc">Multi-ecosystem deployment platform for blockchain infrastructure. Deploy, manage, and monitor nodes across multiple chains with automated orchestration.</div>
+                <div class="program-meta">
+                  <span class="program-tag">Blockchain</span>
+                  <span class="program-tag">Deployment</span>
+                  <span class="program-tag">Infrastructure</span>
+                  <span class="program-tag">Multi-Chain</span>
+                </div>
+              </a>
+
+              <div class="program-card coming-soon">
+                <div class="program-icon coming-soon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v4a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8"/></svg>
+                </div>
+                <div class="program-title">Audio Studio</div>
+                <div class="program-desc">Audio processing, noise reduction, format conversion, and enhancement tools.</div>
+                <div class="program-meta">
+                  <span class="badge badge-gold">Coming Soon</span>
+                </div>
+              </div>
+
+              <div class="program-card coming-soon">
+                <div class="program-icon coming-soon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+                </div>
+                <div class="program-title">Document AI</div>
+                <div class="program-desc">Intelligent document parsing, OCR, and data extraction from scanned files.</div>
+                <div class="program-meta">
+                  <span class="badge badge-gold">Coming Soon</span>
+                </div>
+              </div>
+
+              <div class="program-card coming-soon">
+                <div class="program-icon coming-soon">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-dim)" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                </div>
+                <div class="program-title">Analytics Engine</div>
+                <div class="program-desc">Custom data analytics dashboards with real-time visualization and reporting.</div>
+                <div class="program-meta">
+                  <span class="badge badge-gold">Coming Soon</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="modal-container"></div>
+  <script src="js/utils.js"></script>
+  <script src="js/services/api.js"></script>
+  <script src="js/services/auth.js"></script>
+  <script src="js/data/mock-data.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      function genPerfData(start, end, points) {
+        var data = [];
+        var val = start;
+        var step = (end - start) / points;
+        for (var i = 0; i < points; i++) {
+          val += step + (Math.random() - 0.5) * Math.abs(step) * 3;
+          data.push({ value: val });
+        }
+        data[data.length - 1].value = end;
+        return data;
+      }
+
+      var charts = [
+        { id: 'tl-chart-2323405', start: 0, end: -164.59, color: '#ef5350' },
+        { id: 'tl-chart-2239952', start: 0, end: -3004.53, color: '#ef5350' },
+        { id: 'tl-chart-2340741', start: 0, end: 0, color: '#10b981' }
+      ];
+
+      charts.forEach(function(c) {
+        var el = document.getElementById(c.id);
+        if (el && typeof Charts !== 'undefined') {
+          Charts.sparkline(el, genPerfData(c.start, c.end, 30), {
+            width: el.offsetWidth || 320,
+            height: 60,
+            color: c.color
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

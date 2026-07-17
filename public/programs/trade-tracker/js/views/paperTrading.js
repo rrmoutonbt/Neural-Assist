@@ -12,6 +12,7 @@ import { showToast } from '../components/toast.js';
 import { formatCurrency, formatPercent } from '../utils/formatters.js';
 import { PAIRS, PAIR_BASE_PRICES, PAPER_KEY } from '../utils/constants.js';
 import { render as renderChartView } from './chartView.js?v=5';
+import { tradingService } from '../utils/tradingService.js';
 
 const STARTING_BALANCE = 100000;
 const MARGIN_STARTING_BALANCE = 50000;
@@ -374,7 +375,7 @@ export async function render(container) {
       </div>
 
       <!-- Floating Order Widget -->
-      <div id="pt-order-widget" style="position:fixed;bottom:${240 + (positions.length > 0 ? 40 * Math.min(positions.length, 3) : 30)}px;left:50%;transform:translateX(-50%);background:#1e222dF0;backdrop-filter:blur(12px);border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:10;width:540px;overflow:hidden">
+      <div id="pt-order-widget" style="position:fixed;background:#1e222dF0;backdrop-filter:blur(12px);border:1px solid #363a45;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,0.7);z-index:10;width:540px;overflow:hidden;cursor:default" data-default-bottom="${240 + (positions.length > 0 ? 40 * Math.min(positions.length, 3) : 30)}">
         ${widgetCollapsed ? `
         <div style="display:flex;align-items:center;padding:8px 16px;gap:10px">
           <span style="font-size:13px;font-weight:700;color:${TEXT}">${selectedPair}</span>
@@ -863,6 +864,87 @@ export async function render(container) {
     if (e.target.id === 'pt-pair-select') {
       selectedPair = e.target.value;
       renderTradingPanel();
+    }
+  });
+
+  // ── Floating Order Widget — Drag to reposition ──
+  let widgetPos = null; // { top, left } when user has dragged it
+  let widgetDragging = false;
+
+  function applyWidgetPosition() {
+    const widget = document.getElementById('pt-order-widget');
+    if (!widget) return;
+    if (widgetPos) {
+      widget.style.top = widgetPos.top + 'px';
+      widget.style.left = widgetPos.left + 'px';
+      widget.style.bottom = 'auto';
+      widget.style.transform = 'none';
+    } else {
+      const defaultBottom = widget.dataset.defaultBottom || '270';
+      widget.style.bottom = defaultBottom + 'px';
+      widget.style.left = '50%';
+      widget.style.transform = 'translateX(-50%)';
+      widget.style.top = 'auto';
+    }
+  }
+
+  // Apply position after each render
+  const origRender = renderTradingPanel;
+  renderTradingPanel = function() {
+    origRender();
+    requestAnimationFrame(applyWidgetPosition);
+  };
+  // Apply for the initial render that already happened
+  requestAnimationFrame(applyWidgetPosition);
+
+  container.addEventListener('mousedown', (e) => {
+    // Only start drag on the widget header bar (first child row with pair name)
+    const widget = document.getElementById('pt-order-widget');
+    if (!widget) return;
+    const header = widget.firstElementChild;
+    if (!header || !header.contains(e.target)) return;
+    // Don't drag if clicking a button/input inside the header
+    if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
+
+    e.preventDefault();
+    widgetDragging = true;
+    const rect = widget.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    widget.style.cursor = 'grabbing';
+    header.style.cursor = 'grabbing';
+
+    const onMove = (ev) => {
+      if (!widgetDragging) return;
+      let newLeft = ev.clientX - offsetX;
+      let newTop = ev.clientY - offsetY;
+      // Clamp to viewport
+      newLeft = Math.max(0, Math.min(window.innerWidth - widget.offsetWidth, newLeft));
+      newTop = Math.max(0, Math.min(window.innerHeight - widget.offsetHeight, newTop));
+      widgetPos = { top: newTop, left: newLeft };
+      widget.style.top = newTop + 'px';
+      widget.style.left = newLeft + 'px';
+      widget.style.bottom = 'auto';
+      widget.style.transform = 'none';
+    };
+
+    const onUp = () => {
+      widgetDragging = false;
+      widget.style.cursor = 'default';
+      if (header) header.style.cursor = 'grab';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Set grab cursor on the header
+  requestAnimationFrame(() => {
+    const widget = document.getElementById('pt-order-widget');
+    if (widget && widget.firstElementChild) {
+      widget.firstElementChild.style.cursor = 'grab';
     }
   });
 

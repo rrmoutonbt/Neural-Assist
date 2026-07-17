@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading - Banc of El Trust International</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/reset.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/charts.css">
+  <link rel="stylesheet" href="css/utilities.css">
+  <style>
+    .trading-layout { display: grid; grid-template-columns: 1fr 320px; gap: var(--space-4); }
+    .trading-main { display: flex; flex-direction: column; gap: var(--space-4); }
+    .trading-sidebar { display: flex; flex-direction: column; gap: var(--space-4); }
+    .pair-selector { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4); background: var(--color-bg-card); border-radius: var(--radius-lg); border: 1px solid var(--color-border); }
+    .live-badge { display: inline-flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 12px; background: rgba(16,185,129,0.12); color: #10b981; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: livePulse 1.5s ease-in-out infinite; }
+    @keyframes livePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .pair-info { flex: 1; }
+    .pair-name { font-size: 1.25rem; font-weight: 700; }
+    .pair-price { font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono); color: var(--color-green); }
+    .pair-change { font-size: 0.875rem; }
+    .order-panel { background: var(--color-bg-card); border-radius: var(--radius-lg); border: 1px solid var(--color-border); padding: var(--space-4); }
+    .order-tabs { display: flex; margin-bottom: var(--space-4); }
+    .order-tab { flex: 1; padding: var(--space-3); text-align: center; font-weight: 500; border-radius: var(--radius-md); cursor: pointer; }
+    .order-tab.buy { background: rgba(16, 185, 129, 0.15); color: var(--color-green); }
+    .order-tab.sell { background: rgba(239, 68, 68, 0.15); color: var(--color-red); }
+    .order-type-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-4); }
+    .order-type-tab { padding: var(--space-2) var(--space-3); font-size: 0.8125rem; border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-muted); }
+    .order-type-tab.active { background: var(--color-cyan); color: white; }
+    .order-input { margin-bottom: var(--space-3); }
+    .order-input label { display: block; font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: var(--space-1); }
+    .order-input input { width: 100%; padding: var(--space-3); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); font-family: var(--font-mono); }
+    .order-summary { padding: var(--space-3); background: var(--color-surface); border-radius: var(--radius-md); margin-bottom: var(--space-4); font-size: 0.875rem; }
+    .order-summary-row { display: flex; justify-content: space-between; margin-bottom: var(--space-1); }
+    .order-summary-row:last-child { margin-bottom: 0; }
+    .btn-buy { background: var(--color-green); color: white; width: 100%; }
+    .btn-sell { background: var(--color-red); color: white; width: 100%; }
+    @media (max-width: 1024px) { .trading-layout { grid-template-columns: 1fr; } }
+    .chart-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
+    .chart-tool-group { display: flex; align-items: center; gap: 4px; }
+    .chart-tool-label { font-size: 0.7rem; color: var(--color-text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; }
+    .indicator-toggle { padding: 3px 10px; font-size: 0.75rem; border-radius: 12px; background: var(--color-surface); color: var(--color-text-muted); cursor: pointer; border: 1px solid transparent; transition: all 0.2s; font-family: 'Inter', sans-serif; }
+    .indicator-toggle:hover { border-color: var(--color-border); color: var(--color-text); }
+    .indicator-toggle.active { background: rgba(42, 157, 92, 0.15); color: #2a9d5c; border-color: rgba(42, 157, 92, 0.3); }
+    .drawing-tool-btn { padding: 3px 10px; font-size: 0.75rem; border-radius: 12px; background: var(--color-surface); color: var(--color-text-muted); cursor: pointer; border: 1px solid transparent; transition: all 0.2s; font-family: 'Inter', sans-serif; }
+    .drawing-tool-btn:hover { border-color: var(--color-border); color: var(--color-text); }
+    .drawing-tool-btn.active { background: rgba(33, 150, 243, 0.15); color: #2196f3; border-color: rgba(33, 150, 243, 0.3); }
+    .drawing-tool-btn.clear-btn { color: var(--color-text-muted); }
+    .drawing-tool-btn.clear-btn:hover { color: #ef5350; border-color: rgba(239,83,80,0.3); }
+    .chart-type-btn { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; background: var(--color-surface); color: var(--color-text-muted); cursor: pointer; border: 1px solid transparent; transition: all 0.2s; }
+    .chart-type-btn:hover { color: var(--color-text); }
+    .chart-type-btn.active { background: var(--color-gold); color: var(--color-bg); }
+    .chart-divider { width: 1px; height: 20px; background: var(--color-border); margin: 0 4px; }
+    .fullscreen-btn { margin-left: auto; padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; background: var(--color-surface); color: var(--color-text-muted); cursor: pointer; border: 1px solid transparent; }
+    .fullscreen-btn:hover { color: var(--color-text); border-color: var(--color-border); }
+    .chart-card-fullscreen { position: fixed !important; top: 0; left: 0; width: 100vw !important; height: 100vh !important; z-index: 9999; border-radius: 0 !important; }
+    .chart-nav-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-sm); background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-muted); cursor: pointer; transition: all 0.15s; flex-shrink: 0; }
+    .chart-nav-btn:hover { background: var(--color-bg-card); color: var(--color-text); border-color: var(--color-gold); }
+    .chart-nav-btn:active { transform: scale(0.92); }
+    /* Asset search bar */
+    .asset-search-bar { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--color-bg-card); border-radius: var(--radius-lg); border: 1px solid var(--color-border); margin-bottom: var(--space-4); }
+    .asset-search-wrapper { position: relative; flex: 1; max-width: 360px; }
+    .asset-search-input { width: 100%; padding: 8px 12px 8px 36px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text); font-size: 0.875rem; font-family: 'Inter', sans-serif; outline: none; transition: border-color 0.2s; }
+    .asset-search-input:focus { border-color: var(--color-gold); }
+    .asset-search-input::placeholder { color: var(--color-text-dim); }
+    .asset-search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--color-text-dim); pointer-events: none; }
+    .asset-search-results { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-md); max-height: 320px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    .asset-search-results.show { display: block; }
+    .asset-result-item { display: flex; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; transition: background 0.15s; border-bottom: 1px solid var(--color-border); }
+    .asset-result-item:last-child { border-bottom: none; }
+    .asset-result-item:hover, .asset-result-item.highlighted { background: var(--color-surface); }
+    .asset-result-icon { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.8rem; color: #fff; flex-shrink: 0; }
+    .asset-result-info { flex: 1; min-width: 0; }
+    .asset-result-symbol { font-weight: 600; font-size: 0.9rem; }
+    .asset-result-name { font-size: 0.75rem; color: var(--color-text-muted); }
+    .asset-result-price { text-align: right; font-family: var(--font-mono); }
+    .asset-result-price-val { font-size: 0.875rem; font-weight: 600; }
+    .asset-result-change { font-size: 0.7rem; }
+    .asset-selected-info { display: flex; align-items: center; gap: var(--space-4); flex: 1; }
+    .asset-selected-pair { font-size: 1.25rem; font-weight: 700; white-space: nowrap; }
+    .asset-selected-name { font-size: 0.8rem; color: var(--color-text-muted); }
+    .asset-price-display { text-align: right; }
+    .asset-price-display .pair-price { font-size: 1.5rem; font-weight: 700; font-family: var(--font-mono); }
+    .asset-search-kbd { display: inline-block; padding: 1px 6px; border-radius: 3px; background: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-dim); font-size: 0.65rem; font-family: var(--font-mono); margin-left: 8px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar (same as dashboard) -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 2L2 9l14 7 14-7-14-7zM2 23l14 7 14-7M2 16l14 7 14-7"/></svg>
+          <div><h1>Banc of El</h1><span>Trust International</span></div>
+        </div>
+      </div>
+      <nav>
+        <div class="nav-section">
+          <div class="nav-section-title">Overview</div>
+          <a href="dashboard.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span>Dashboard</span></a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Trading</div>
+          <a href="trading.html" class="nav-item active">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
+            <span>Trading</span>
+          </a>
+          <a href="wallet.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 10H2M7 15h4"/></svg>
+            <span>Wallet</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Banking</div>
+          <a href="accounts.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M3 10h18M5 6l7-3 7 3M4 10v11M20 10v11M8 14v3M12 14v3M16 14v3"/></svg><span>Accounts</span></a>
+          <a href="loans.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span>Loans</span></a>
+          <a href="transactions.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3L4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4"/></svg><span>Transactions</span></a>
+          <a href="programs.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 8l5 3-5 3V8z"/></svg>
+            <span>Programs</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Crypto Treasury</div>
+          <a href="crypto/treasury.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>Treasury</span></a>
+          <a href="crypto/holdings.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg><span>Holdings</span></a>
+          <a href="crypto/defi.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg><span>DeFi</span></a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Unified</div>
+          <a href="unified/total-assets.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span>Total Assets</span></a>
+          <a href="unified/portfolio.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg><span>Portfolio</span></a>
+          <a href="unified/ai-insights.html" class="nav-item"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg><span>AI Insights</span></a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Asset Management</div>
+          <a href="aum.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2M7 11h4"/></svg>
+            <span>AUM</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Reports</div>
+          <a href="reports.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg>
+            <span>Executive Reports</span>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Library</div>
+          <a href="library.html" class="nav-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/><path d="M8 7h8M8 11h6"/></svg>
+            <span>Library</span>
+          </a>
+        </div>
+        <div class="nav-section nav-collapsible">
+          <div class="nav-section-title nav-toggle" onclick="this.parentElement.classList.toggle('expanded')">
+            <span>Administration</span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-chevron"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+          <div class="nav-collapse-content">
+            <a href="admin/compliance.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Compliance</span>
+            </a>
+            <a href="admin/kyc.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+              <span>KYC Management</span>
+            </a>
+            <a href="admin/system.html" class="nav-item">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+              <span>System Health</span>
+            </a>
+          </div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Institutional</div>
+          <a href="institutional-trader.html" class="nav-item nav-protected">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/><path d="M6 8h2M6 12h2M14 8h4M14 12h4"/></svg>
+            <span>Institutional Trader</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-lock"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </a>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">Control Room</div>
+          <a href="blockchain-control-room/login.html" class="nav-item nav-protected">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span>Blockchain Control</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="nav-lock"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar">JD</div>
+          <div class="user-details">
+            <div class="user-name">John Doe</div>
+            <div class="user-role">Administrator</div>
+            <div class="user-email" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis;"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <header class="header">
+        <div class="header-left"><div class="header-title"><h1>Trading Terminal</h1></div></div>
+        <div class="header-right">
+          <button class="btn btn-ghost btn-sm" aria-label="Notifications">🔔</button>
+          <button class="btn btn-primary btn-sm" onclick="App.logout()" aria-label="Logout">Logout</button>
+        </div>
+      </header>
+
+      <!-- Hidden select for backward compat with trading.js -->
+      <select id="pair-selector" style="display:none;">
+        <option value="XRP/USD">XRP/USD</option>
+        <option value="BTC/USD">BTC/USD</option>
+        <option value="ETH/USD">ETH/USD</option>
+        <option value="SOL/USD">SOL/USD</option>
+        <option value="DOGE/USD">DOGE/USD</option>
+        <option value="ADA/USD">ADA/USD</option>
+        <option value="AVAX/USD">AVAX/USD</option>
+        <option value="DOT/USD">DOT/USD</option>
+        <option value="LINK/USD">LINK/USD</option>
+        <option value="MATIC/USD">MATIC/USD</option>
+      </select>
+
+      <main class="page-content">
+        <div class="container">
+          <!-- Asset Search Bar -->
+          <div class="asset-search-bar" id="pair-info">
+            <div class="asset-selected-info">
+              <div>
+                <div class="asset-selected-pair" id="pair-name">Digital Currencies</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span class="asset-selected-name" id="pair-subtitle">XRP/USD · Ripple</span>
+                  <span class="live-badge"><span class="live-dot"></span>Live</span>
+                </div>
+              </div>
+            </div>
+            <div class="asset-search-wrapper">
+              <svg class="asset-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+              <input type="text" class="asset-search-input" id="asset-search" placeholder="Search digital currencies..." autocomplete="off">
+              <span class="asset-search-kbd">/</span>
+              <div class="asset-search-results" id="asset-search-results"></div>
+            </div>
+            <div class="asset-price-display">
+              <div class="pair-price" id="pair-price">$2.5432</div>
+              <div class="pair-change text-green" id="pair-change">+5.23% (24h)</div>
+            </div>
+          </div>
+
+          <div class="trading-layout">
+            <div class="trading-main">
+              <!-- Price Chart -->
+              <div class="card">
+                <div class="card-header">
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="chart-nav-btn" id="chart-nav-prev" title="Previous asset" aria-label="Previous asset">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
+                    <h3 class="card-title" id="chart-pair-label">XRP/USD</h3>
+                    <button class="chart-nav-btn" id="chart-nav-next" title="Next asset" aria-label="Next asset">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  </div>
+                  <div class="timeframe-selector">
+                    <button class="timeframe-btn" aria-label="1 minute">1m</button>
+                    <button class="timeframe-btn" aria-label="5 minutes">5m</button>
+                    <button class="timeframe-btn active" aria-label="15 minutes">15m</button>
+                    <button class="timeframe-btn" aria-label="1 hour">1H</button>
+                    <button class="timeframe-btn" aria-label="4 hours">4H</button>
+                    <button class="timeframe-btn" aria-label="1 day">1D</button>
+                  </div>
+                </div>
+                <div class="chart-toolbar" id="chart-toolbar">
+                  <div class="chart-tool-group">
+                    <span class="chart-tool-label">Type</span>
+                    <button class="chart-type-btn active" data-chart-type="candle">Candle</button>
+                    <button class="chart-type-btn" data-chart-type="heikin-ashi">Heikin-Ashi</button>
+                    <button class="chart-type-btn" data-chart-type="line">Line</button>
+                    <button class="chart-type-btn" data-chart-type="area">Area</button>
+                  </div>
+                  <div class="chart-divider"></div>
+                  <div class="chart-tool-group">
+                    <span class="chart-tool-label">Indicators</span>
+                    <button class="indicator-toggle active" data-indicator="showEMA9">EMA(9)</button>
+                    <button class="indicator-toggle active" data-indicator="showSMA">SMA(20/50)</button>
+                    <button class="indicator-toggle active" data-indicator="showBB">BB</button>
+                    <button class="indicator-toggle active" data-indicator="showVWAP">VWAP</button>
+                    <button class="indicator-toggle active" data-indicator="showRSI">RSI</button>
+                    <button class="indicator-toggle" data-indicator="showMACD">MACD</button>
+                    <button class="indicator-toggle" data-indicator="showStoch">Stoch</button>
+                    <button class="indicator-toggle active" data-indicator="showVolume">Volume</button>
+                  </div>
+                  <div class="chart-divider"></div>
+                  <div class="chart-tool-group">
+                    <span class="chart-tool-label">Draw</span>
+                    <button class="drawing-tool-btn" data-drawing="trendline">Trendline</button>
+                    <button class="drawing-tool-btn" data-drawing="horizontal">H-Line</button>
+                    <button class="drawing-tool-btn" data-drawing="fibonacci">Fib</button>
+                    <button class="drawing-tool-btn" data-drawing="rectangle">Rect</button>
+                    <button class="drawing-tool-btn clear-btn" id="clear-drawings-btn">Clear</button>
+                  </div>
+                  <button class="fullscreen-btn" id="chart-fullscreen-btn" title="Toggle Fullscreen">&#x26F6; Fullscreen</button>
+                </div>
+                <div id="price-chart" class="chart-canvas-lg"></div>
+              </div>
+
+              <!-- Order Book & Trades -->
+              <div class="grid grid-cols-2">
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">Order Book</h3></div>
+                  <div class="orderbook" id="order-book">
+                    <div class="orderbook-side orderbook-bid">
+                      <div class="orderbook-header"><span>Price</span><span>Amount</span><span>Total</span></div>
+                      <div id="bids"></div>
+                    </div>
+                    <div class="orderbook-side orderbook-ask">
+                      <div class="orderbook-header"><span>Price</span><span>Amount</span><span>Total</span></div>
+                      <div id="asks"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="card">
+                  <div class="card-header"><h3 class="card-title">Recent Trades</h3></div>
+                  <div class="trades-list" id="recent-trades"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Order Panel -->
+            <div class="trading-sidebar">
+              <div class="order-panel">
+                <div class="order-tabs">
+                  <div class="order-tab buy active" id="tab-buy" data-side="buy">Buy</div>
+                  <div class="order-tab sell" id="tab-sell" data-side="sell">Sell</div>
+                </div>
+                <div class="order-type-tabs">
+                  <button class="order-type-tab active" data-type="limit">Limit</button>
+                  <button class="order-type-tab" data-type="market">Market</button>
+                  <button class="order-type-tab" data-type="stop">Stop</button>
+                </div>
+                <div class="order-input">
+                  <label>Price (USD)</label>
+                  <input type="number" id="order-price" value="2.5432" step="0.0001">
+                </div>
+                <div class="order-input">
+                  <label>Amount (<span id="order-amount-label">XRP</span>)</label>
+                  <input type="number" id="order-amount" placeholder="0.00">
+                </div>
+                <div class="order-input">
+                  <label>Total (USD)</label>
+                  <input type="number" id="order-total" placeholder="0.00" readonly>
+                </div>
+                <div class="order-summary">
+                  <div class="order-summary-row"><span>Available:</span><span class="font-mono" id="order-available">$0.00</span></div>
+                  <div class="order-summary-row"><span>Fee (0.1%):</span><span class="font-mono" id="order-fee">$0.00</span></div>
+                </div>
+                <button class="btn btn-buy" id="place-order-btn">Buy XRP</button>
+              </div>
+
+              <!-- Open Orders -->
+              <div class="card">
+                <div class="card-header"><h3 class="card-title">Open Orders</h3></div>
+                <div id="open-orders">
+                  <div class="empty-state">
+                    <p class="text-sm text-muted">No open orders</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="modal-container"></div>
+  <script src="js/utils.js"></script>
+  <script src="js/services/api.js"></script>
+  <script src="js/services/auth.js"></script>
+  <script src="js/data/mock-data.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/modules/trading.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

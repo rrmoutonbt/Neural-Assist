@@ -305,6 +305,20 @@ export async function render(container) {
         </div>
       </div>
 
+      <!-- Expandable Bottom Panel -->
+      <div class="tv-bottom-panel" id="bottom-panel">
+        <div class="tv-bottom-handle" id="bottom-handle" title="Drag to resize / Click to toggle">
+          <span class="tv-bottom-handle-chevron" id="bottom-chevron">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+            <span>Expand</span>
+          </span>
+        </div>
+        <div class="tv-bottom-tabs" id="bottom-tabs">
+          <button class="tv-bottom-tab active" data-panel-tab="positions">Open Positions</button>
+        </div>
+        <div class="tv-bottom-content" id="bottom-content"></div>
+      </div>
+
       <div class="tv-statusbar">
         <div class="tv-statusbar-left">
           <span class="tv-status-dot tv-dot-green"></span>
@@ -2366,6 +2380,183 @@ export async function render(container) {
   const chartArea = document.getElementById('chart-area');
   if (chartArea) ro.observe(chartArea);
 
+  // ---- Bottom Expandable Panel ----
+  const bottomPanel = document.getElementById('bottom-panel');
+  const bottomHandle = document.getElementById('bottom-handle');
+  const bottomChevron = document.getElementById('bottom-chevron');
+  const bottomContent = document.getElementById('bottom-content');
+  const bottomTabs = document.getElementById('bottom-tabs');
+  let panelExpanded = false;
+  let panelDragging = false;
+  let panelDragStartY = 0;
+  let panelDragStartH = 0;
+  const PANEL_MIN_H = 120;
+  const PANEL_MAX_H = 500;
+  const PANEL_DEFAULT_H = 220;
+
+  function getLastPrice(symbol) {
+    // Use the chart's live data if the symbol matches, otherwise estimate from seed base prices
+    if (symbol === cs.symbol && cs.fullData && cs.fullData.length) {
+      return cs.fullData[cs.fullData.length - 1].close;
+    }
+    const basePrices = { 'AAPL': 178, 'TSLA': 245, 'NVDA': 480, 'SPY': 455, 'MSFT': 375, 'AMZN': 153,
+      'GOOGL': 140, 'META': 360, 'BTC/USD': 43500, 'ETH/USD': 2280, 'XRP/USD': 0.62, 'SOL/USD': 98,
+      'XAU/USD': 2040, 'EUR/USD': 1.09, 'GBP/USD': 1.27, 'DOGE/USD': 0.082, 'ADA/USD': 0.58 };
+    return basePrices[symbol] || null;
+  }
+
+  function renderPanelTab(tab) {
+    if (tab === 'positions') {
+      const allTrades = getTrades();
+      const openTrades = allTrades.filter(t => t.status === 'open');
+      if (!openTrades.length) {
+        return `<div style="display:flex;align-items:center;gap:10px;padding:20px;color:#5d6b7e">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+          <span style="font-size:13px">No open positions.</span>
+        </div>`;
+      }
+
+      let totalUnrealized = 0;
+      let totalValue = 0;
+
+      const rows = openTrades.map(t => {
+        const last = getLastPrice(t.pair);
+        let unrealized = 0;
+        let unrealizedPct = 0;
+        let mktVal = t.entryPrice * t.quantity;
+        if (last) {
+          const diff = t.side === 'Long' ? (last - t.entryPrice) : (t.entryPrice - last);
+          unrealized = diff * t.quantity - t.fees;
+          unrealizedPct = ((diff / t.entryPrice) * 100);
+          mktVal = last * t.quantity;
+        }
+        totalUnrealized += unrealized;
+        totalValue += mktVal;
+
+        const pnlColor = unrealized > 0 ? '#3fb950' : unrealized < 0 ? '#f85149' : '#5d6b7e';
+        const sideColor = t.side === 'Long' ? '#3fb950' : '#f85149';
+        const slDist = t.stopLoss && last ? ((t.side === 'Long' ? (last - t.stopLoss) : (t.stopLoss - last)) / last * 100).toFixed(1) : null;
+        const tpDist = t.takeProfit && last ? ((t.side === 'Long' ? (t.takeProfit - last) : (last - t.takeProfit)) / last * 100).toFixed(1) : null;
+
+        return `<tr>
+          <td style="font-weight:600;color:#58a6ff">${t.pair}</td>
+          <td style="color:${sideColor};font-weight:600">${t.side}</td>
+          <td style="font-family:var(--font-mono)">${formatCurrency(t.entryPrice)}</td>
+          <td style="font-family:var(--font-mono)">${last ? formatCurrency(last) : '—'}</td>
+          <td style="font-family:var(--font-mono)">${t.quantity < 1 ? t.quantity.toFixed(4) : t.quantity >= 1000 ? t.quantity.toLocaleString() : t.quantity.toFixed(2)}</td>
+          <td style="font-family:var(--font-mono)">${formatCurrency(mktVal)}</td>
+          <td style="font-family:var(--font-mono);color:${pnlColor};font-weight:600">${unrealized >= 0 ? '+' : ''}${formatCurrency(unrealized)}</td>
+          <td style="font-family:var(--font-mono);color:${pnlColor}">${unrealizedPct >= 0 ? '+' : ''}${unrealizedPct.toFixed(1)}%</td>
+          <td style="font-family:var(--font-mono);color:#ffa657">${t.stopLoss ? formatCurrency(t.stopLoss) : '—'}${slDist ? ' <span style="font-size:10px;opacity:0.6">(' + slDist + '%)</span>' : ''}</td>
+          <td style="font-family:var(--font-mono);color:#56d364">${t.takeProfit ? formatCurrency(t.takeProfit) : '—'}${tpDist ? ' <span style="font-size:10px;opacity:0.6">(' + tpDist + '%)</span>' : ''}</td>
+          <td style="color:#5d6b7e;font-size:10px">${t.strategy || '—'}</td>
+        </tr>`;
+      }).join('');
+
+      const totalColor = totalUnrealized > 0 ? '#3fb950' : totalUnrealized < 0 ? '#f85149' : '#5d6b7e';
+
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="font-size:12px;color:#8b949e;font-weight:600">${openTrades.length} Open Position${openTrades.length !== 1 ? 's' : ''}</span>
+            <span style="font-size:11px;color:#5d6b7e">Mkt Value: <span style="color:#e6edf3;font-weight:600;font-family:var(--font-mono)">${formatCurrency(totalValue)}</span></span>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:#5d6b7e">Unrealized P&L:</span>
+            <span style="font-size:14px;font-weight:700;font-family:var(--font-mono);color:${totalColor}">${totalUnrealized >= 0 ? '+' : ''}${formatCurrency(totalUnrealized)}</span>
+          </div>
+        </div>
+        <table class="tv-bottom-table">
+          <thead><tr>
+            <th>Symbol</th><th>Side</th><th>Entry</th><th>Last</th><th>Qty</th><th>Mkt Value</th><th>Unreal. P&L</th><th>%</th><th>Stop Loss</th><th>Take Profit</th><th>Strategy</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+    return '';
+  }
+
+  // Toggle panel expand/collapse
+  function togglePanel() {
+    panelExpanded = !panelExpanded;
+    if (panelExpanded) {
+      bottomPanel.classList.add('expanded');
+      bottomPanel.style.height = PANEL_DEFAULT_H + 'px';
+      bottomChevron.innerHTML = `
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        <span>Collapse</span>`;
+      // Render active tab (default: positions)
+      const activeTab = bottomTabs.querySelector('.tv-bottom-tab.active');
+      bottomContent.innerHTML = renderPanelTab(activeTab ? activeTab.dataset.panelTab : 'positions');
+    } else {
+      bottomPanel.classList.remove('expanded');
+      bottomPanel.style.height = '22px';
+      bottomChevron.innerHTML = `
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+        <span>Expand</span>`;
+    }
+    setTimeout(resizeCanvas, 300);
+  }
+
+  // Click handle to toggle
+  bottomHandle.addEventListener('click', (e) => {
+    if (!panelDragging) togglePanel();
+  });
+
+  // Drag handle to resize
+  bottomHandle.addEventListener('mousedown', (e) => {
+    panelDragging = false;
+    panelDragStartY = e.clientY;
+    panelDragStartH = panelExpanded ? bottomPanel.offsetHeight : PANEL_DEFAULT_H;
+    const onMove = (ev) => {
+      const delta = panelDragStartY - ev.clientY;
+      if (Math.abs(delta) > 4) panelDragging = true;
+      if (panelDragging) {
+        let newH = panelDragStartH + delta;
+        newH = Math.max(PANEL_MIN_H, Math.min(PANEL_MAX_H, newH));
+        if (!panelExpanded) {
+          panelExpanded = true;
+          bottomPanel.classList.add('expanded');
+          bottomChevron.innerHTML = `
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            <span>Collapse</span>`;
+          const dragActiveTab = bottomTabs.querySelector('.tv-bottom-tab.active');
+          bottomContent.innerHTML = renderPanelTab(dragActiveTab ? dragActiveTab.dataset.panelTab : 'positions');
+        }
+        bottomPanel.style.transition = 'none';
+        bottomPanel.style.height = newH + 'px';
+        resizeCanvas();
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      bottomPanel.style.transition = '';
+      // If drag resulted in very small height, collapse
+      if (panelExpanded && bottomPanel.offsetHeight < PANEL_MIN_H + 10) {
+        panelExpanded = false;
+        bottomPanel.classList.remove('expanded');
+        bottomPanel.style.height = '22px';
+        bottomChevron.innerHTML = `
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>
+          <span>Expand</span>`;
+      }
+      setTimeout(() => { panelDragging = false; }, 50);
+      setTimeout(resizeCanvas, 300);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // Tab switching
+  bottomTabs.addEventListener('click', (e) => {
+    const tab = e.target.closest('[data-panel-tab]');
+    if (!tab) return;
+    bottomTabs.querySelectorAll('.tv-bottom-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    bottomContent.innerHTML = renderPanelTab(tab.dataset.panelTab);
+  });
+
   // ---- Init ----
   initAlerts();
   cs.fullData = generateData(cs.symbol);
@@ -2388,6 +2579,13 @@ export async function render(container) {
       updateAlertBadge();
       updateViewData();
       drawChart();
+      // Live-refresh positions panel if visible
+      if (panelExpanded) {
+        const activeTab = bottomTabs.querySelector('.tv-bottom-tab.active');
+        if (activeTab && activeTab.dataset.panelTab === 'positions') {
+          bottomContent.innerHTML = renderPanelTab('positions');
+        }
+      }
     }
   }, 2000);
 

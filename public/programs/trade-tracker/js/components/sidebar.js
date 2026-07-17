@@ -16,6 +16,7 @@ const NAV_ITEMS = [
       { route: '/analytics', label: 'Analytics', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>' },
       { route: '/chart', label: 'Chart', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v3"/><path d="M9 15v5"/><path d="M15 4v5"/><path d="M15 17v3"/><rect x="7" y="7" width="4" height="8" rx="1" fill="currentColor" opacity="0.15"/><rect x="13" y="9" width="4" height="8" rx="1"/><rect x="7" y="7" width="4" height="8" rx="1"/></svg>' },
       { route: '/risk', label: 'Risk Mgmt', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+      { route: '/market-data', label: 'Market Data', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
     ]
   },
   {
