@@ -1,0 +1,474 @@
+<title>LadderBot — first end-to-end run</title>
+<style>
+  :root {
+    --ground: #F5F1E8;
+    --ink: #1A1D24;
+    --ink-soft: #3D4048;
+    --muted: #6B6E75;
+    --rule: #C7C1B3;
+    --panel: #EBE6D8;
+    --panel-strong: #E0DAC8;
+    --amber: #E8B04A;
+    --sage: #7EA88A;
+    --brick: #C4623D;
+    --slate: #6B95C4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F1218; --ink: #E8E6DF; --ink-soft: #B8B5A9;
+      --muted: #8A8C90; --rule: #2C2F36; --panel: #171B22;
+      --panel-strong: #1D222B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1218; --ink: #E8E6DF; --ink-soft: #B8B5A9;
+    --muted: #8A8C90; --rule: #2C2F36; --panel: #171B22;
+    --panel-strong: #1D222B;
+  }
+  :root[data-theme="light"] {
+    --ground: #F5F1E8; --ink: #1A1D24; --ink-soft: #3D4048;
+    --muted: #6B6E75; --rule: #C7C1B3; --panel: #EBE6D8;
+    --panel-strong: #E0DAC8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ground); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 56px 40px 80px; }
+
+  .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 12px;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 500; font-size: 40px; line-height: 1.1;
+    letter-spacing: -0.01em; text-wrap: balance;
+    margin: 0 0 14px;
+  }
+  .lede { max-width: 62ch; font-size: 16px; color: var(--ink-soft); margin: 0; }
+
+  .verdict {
+    margin: 36px 0 44px;
+    padding: 22px 26px;
+    border-left: 3px solid var(--brick);
+    background: var(--panel);
+    font-family: Georgia, serif;
+    font-size: 17px;
+    line-height: 1.5;
+  }
+  .verdict strong { color: var(--brick); font-variant: small-caps; letter-spacing: 0.02em; }
+
+  h2 {
+    font-family: Georgia, serif; font-weight: 500;
+    font-size: 22px; margin: 48px 0 14px;
+  }
+  h2 .kicker {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+    margin-right: 12px;
+  }
+
+  .kv-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  }
+  .kv-grid .cell {
+    padding: 16px 20px;
+    border-right: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .kv-grid .cell:last-child { border-right: none; }
+  .kv-grid .label {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted);
+  }
+  .kv-grid .val {
+    font-family: Georgia, serif; font-size: 26px; color: var(--ink);
+  }
+  .kv-grid .note {
+    font-size: 12px; color: var(--muted); font-style: italic;
+  }
+
+  table.sweep {
+    width: 100%; border-collapse: collapse; margin-top: 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px;
+  }
+  table.sweep th, table.sweep td {
+    padding: 10px 14px; text-align: right;
+    border-bottom: 1px solid var(--rule);
+  }
+  table.sweep th:first-child, table.sweep td:first-child { text-align: left; }
+  table.sweep th {
+    color: var(--muted); font-weight: 500; font-size: 11px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  table.sweep tr.gated { color: var(--brick); }
+  table.sweep tr.headline { background: var(--panel-strong); }
+  table.sweep tr.headline td { font-weight: 600; }
+
+  .chart-frame {
+    background: var(--panel); border: 1px solid var(--rule);
+    padding: 24px 28px; margin-top: 12px;
+    overflow-x: auto;
+  }
+  .chart-frame svg { display: block; width: 100%; height: auto; }
+
+  ul.take {
+    padding: 0; margin: 12px 0 0;
+    list-style: none;
+    display: grid; gap: 12px;
+  }
+  ul.take li {
+    padding-left: 28px; position: relative;
+    color: var(--ink-soft); font-size: 15px;
+  }
+  ul.take li::before {
+    content: "→";
+    position: absolute; left: 0; top: 0;
+    color: var(--amber); font-weight: bold;
+  }
+
+  .footnote {
+    margin-top: 44px; padding: 18px 22px;
+    border-left: 3px solid var(--amber); background: var(--panel);
+    font-size: 14px; color: var(--ink-soft);
+  }
+  .footnote code {
+    font-family: ui-monospace, monospace; font-size: 13px;
+    background: var(--panel-strong); padding: 1px 6px;
+  }
+
+  svg .grid { stroke: var(--rule); stroke-width: 0.5; }
+  svg .axis-label {
+    font-family: ui-monospace, monospace; font-size: 10px;
+    fill: var(--muted); letter-spacing: 0.06em;
+  }
+  svg .bar-obs { fill: var(--amber); }
+  svg .bar-exp { fill: var(--slate); opacity: 0.55; }
+  svg .bar-label {
+    font-family: ui-monospace, monospace; font-size: 10px;
+    fill: var(--muted);
+  }
+  svg .legend-text {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    fill: var(--ink-soft);
+  }
+  svg .line-hit  { fill: none; stroke: var(--sage);  stroke-width: 2; }
+  svg .line-n    { fill: none; stroke: var(--amber); stroke-width: 2; }
+  svg .dot { stroke: var(--ground); stroke-width: 1.5; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">LadderBot · sprint 9 · first end-to-end run</p>
+  <h1>The pipeline works. The 90 gate does not clear.</h1>
+  <p class="lede">
+    First actual run of the full LadderBot stack: ingest → label → train a
+    calibrated GBDT → walk-forward validate → report. Four symbols, three
+    years of synthetic multi-regime bars, 1,856 labeled samples. Results
+    honest, not tuned.
+  </p>
+
+  <div class="verdict">
+    <strong>Headline.</strong> With this feature set on synthetic data, the model
+    <em>never produces a calibrated probability ≥ 85</em>. The transcript's
+    90-gate ships <em>zero trades</em>. 100% hit rate <em>is</em> reachable at gates
+    65–80, but on 4–40 trades over three years — too thin to be a live strategy.
+    High hit rate did not equal profit: the losing trades hemorrhaged more than
+    the winners banked, exposing a mismatch between the fixed-$225-target rule
+    and the delta-linear P&amp;L simulator's end-of-hold mark-to-market.
+  </div>
+
+  <h2><span class="kicker">01</span>Training</h2>
+  <div class="kv-grid">
+    <div class="cell">
+      <div class="label">Samples</div>
+      <div class="val">1,856</div>
+      <div class="note">1,392 train · 464 test</div>
+    </div>
+    <div class="cell">
+      <div class="label">Test AUC</div>
+      <div class="val">0.565</div>
+      <div class="note">weak but non-random signal</div>
+    </div>
+    <div class="cell">
+      <div class="label">Test Brier</div>
+      <div class="val">0.247</div>
+      <div class="note">base rate 0.584</div>
+    </div>
+    <div class="cell">
+      <div class="label">CV AUCs</div>
+      <div class="val">.50 / .54 / .49</div>
+      <div class="note">3 time-series folds</div>
+    </div>
+  </div>
+
+  <h2><span class="kicker">02</span>Gate sweep · where the model actually trades</h2>
+  <table class="sweep">
+    <thead>
+      <tr>
+        <th>Gate</th><th>n trades</th><th>hits</th>
+        <th>hit rate</th><th>total P&amp;L</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>50</td><td>1,824</td><td>1,057</td><td>0.579</td><td>−$3,991,674</td></tr>
+      <tr><td>55</td><td>1,788</td><td>1,047</td><td>0.586</td><td>−$3,953,239</td></tr>
+      <tr class="headline"><td>60 &nbsp;·&nbsp; headline</td><td>269</td><td>223</td><td>0.829</td><td>−$337,435</td></tr>
+      <tr><td>65</td><td>40</td><td>39</td><td>0.975</td><td>+$37,019</td></tr>
+      <tr><td>70</td><td>19</td><td>19</td><td>1.000</td><td>+$19,000</td></tr>
+      <tr><td>75</td><td>11</td><td>11</td><td>1.000</td><td>+$11,000</td></tr>
+      <tr><td>80</td><td>4</td><td>4</td><td>1.000</td><td>+$4,000</td></tr>
+      <tr class="gated"><td>85</td><td>0</td><td>0</td><td>—</td><td>—</td></tr>
+      <tr class="gated"><td>90 &nbsp;·&nbsp; transcript</td><td>0</td><td>0</td><td>—</td><td>—</td></tr>
+      <tr class="gated"><td>95</td><td>0</td><td>0</td><td>—</td><td>—</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chart-frame" style="margin-top:20px">
+    <svg viewBox="0 0 780 280" aria-labelledby="sweepChartTitle">
+      <title id="sweepChartTitle">Trade count and hit rate as a function of ladder gate</title>
+      <!-- Axes -->
+      <line class="grid" x1="60" y1="30"  x2="60" y2="220"/>
+      <line class="grid" x1="720" y1="30" x2="720" y2="220"/>
+      <line class="grid" x1="60" y1="220" x2="720" y2="220"/>
+      <!-- gridlines every 20% -->
+      <g>
+        <line class="grid" x1="60" y1="182" x2="720" y2="182"/>
+        <line class="grid" x1="60" y1="144" x2="720" y2="144"/>
+        <line class="grid" x1="60" y1="106" x2="720" y2="106"/>
+        <line class="grid" x1="60" y1="68"  x2="720" y2="68"/>
+        <line class="grid" x1="60" y1="30"  x2="720" y2="30"/>
+        <text class="axis-label" x="52" y="223" text-anchor="end">0</text>
+        <text class="axis-label" x="52" y="185" text-anchor="end">0.2</text>
+        <text class="axis-label" x="52" y="147" text-anchor="end">0.4</text>
+        <text class="axis-label" x="52" y="109" text-anchor="end">0.6</text>
+        <text class="axis-label" x="52" y="71"  text-anchor="end">0.8</text>
+        <text class="axis-label" x="52" y="33"  text-anchor="end">1.0</text>
+      </g>
+      <!-- Right axis: trade count log-ish, marks at 1, 10, 100, 1000, 2000 -->
+      <g>
+        <text class="axis-label" x="728" y="223" text-anchor="start">0</text>
+        <text class="axis-label" x="728" y="184" text-anchor="start">100</text>
+        <text class="axis-label" x="728" y="140" text-anchor="start">500</text>
+        <text class="axis-label" x="728" y="100" text-anchor="start">1000</text>
+        <text class="axis-label" x="728" y="34" text-anchor="start">2000</text>
+      </g>
+      <!--
+        x mapping: gate 50→x=90, gate 95→x=690, step=(690-90)/9 ≈ 66.7
+        y (hit rate): 30..220 for 1..0
+        y (n_trades): 30..220 for 2000..0 (linear cap)
+      -->
+      <!-- Bars for n_trades (log-ish scale via sqrt for visual comfort) -->
+      <g>
+        <!-- values: 1824,1788,269,40,19,11,4,0,0,0 -->
+        <!-- using sqrt(n/2000)*190 -->
+        <rect x="80"  y="39"  width="20" height="181" class="bar-obs" opacity="0.35"/>
+        <rect x="147" y="41"  width="20" height="179" class="bar-obs" opacity="0.35"/>
+        <rect x="214" y="150" width="20" height="70"  class="bar-obs" opacity="0.35"/>
+        <rect x="281" y="193" width="20" height="27"  class="bar-obs" opacity="0.35"/>
+        <rect x="347" y="201" width="20" height="19"  class="bar-obs" opacity="0.35"/>
+        <rect x="414" y="205" width="20" height="15"  class="bar-obs" opacity="0.35"/>
+        <rect x="481" y="211" width="20" height="9"   class="bar-obs" opacity="0.35"/>
+        <rect x="548" y="220" width="20" height="0"   class="bar-obs" opacity="0.35"/>
+        <rect x="615" y="220" width="20" height="0"   class="bar-obs" opacity="0.35"/>
+        <rect x="682" y="220" width="20" height="0"   class="bar-obs" opacity="0.35"/>
+      </g>
+      <!-- Hit-rate line (0.579, 0.586, 0.829, 0.975, 1.0, 1.0, 1.0, 0, 0, 0) -->
+      <!-- x centres: 90,157,224,291,357,424,491,558,625,692 ; y = 220 - rate*190 -->
+      <polyline class="line-hit" points="
+        90,110  157,109  224,63  291,35  357,30  424,30  491,30
+      "/>
+      <g>
+        <circle class="dot" cx="90"  cy="110" r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="157" cy="109" r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="224" cy="63"  r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="291" cy="35"  r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="357" cy="30"  r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="424" cy="30"  r="4" fill="#7EA88A"/>
+        <circle class="dot" cx="491" cy="30"  r="4" fill="#7EA88A"/>
+      </g>
+      <!-- transcript gate marker -->
+      <line x1="625" y1="30" x2="625" y2="220"
+            stroke="#C4623D" stroke-width="1" stroke-dasharray="4 3"/>
+      <text class="axis-label" x="625" y="245" text-anchor="middle" fill="#C4623D">
+        transcript gate · 90
+      </text>
+      <!-- x labels -->
+      <g>
+        <text class="axis-label" x="90"  y="260" text-anchor="middle">50</text>
+        <text class="axis-label" x="157" y="260" text-anchor="middle">55</text>
+        <text class="axis-label" x="224" y="260" text-anchor="middle">60</text>
+        <text class="axis-label" x="291" y="260" text-anchor="middle">65</text>
+        <text class="axis-label" x="357" y="260" text-anchor="middle">70</text>
+        <text class="axis-label" x="424" y="260" text-anchor="middle">75</text>
+        <text class="axis-label" x="491" y="260" text-anchor="middle">80</text>
+        <text class="axis-label" x="558" y="260" text-anchor="middle">85</text>
+        <text class="axis-label" x="692" y="260" text-anchor="middle">95</text>
+      </g>
+      <!-- legend -->
+      <g transform="translate(60, 12)">
+        <rect x="0" y="0" width="14" height="10" class="bar-obs" opacity="0.35"/>
+        <text class="legend-text" x="20" y="9">trade count (bars)</text>
+        <line x1="180" y1="5" x2="204" y2="5" class="line-hit"/>
+        <circle cx="192" cy="5" r="3" fill="#7EA88A"/>
+        <text class="legend-text" x="212" y="9">hit rate (line)</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2><span class="kicker">03</span>Monthly hits vs transcript profile</h2>
+  <p class="lede" style="font-size:14px">
+    Correlation with the transcript's May=10 / June=12 / Aug–Oct peak profile:
+    <strong>r = 0.225</strong>. Observed hits (amber) exceed transcript expectations
+    at gate 60 in most months — because the gate is too permissive; not because
+    the model has learned Juanita's actual seasonal rhythm.
+  </p>
+
+  <div class="chart-frame">
+    <svg viewBox="0 0 780 260" aria-labelledby="monthChartTitle">
+      <title id="monthChartTitle">Monthly hit counts: observed vs transcript profile</title>
+      <line class="grid" x1="60" y1="200" x2="720" y2="200"/>
+      <!-- y axis: 0..40 -->
+      <g>
+        <line class="grid" x1="60" y1="200" x2="720" y2="200"/>
+        <line class="grid" x1="60" y1="160" x2="720" y2="160"/>
+        <line class="grid" x1="60" y1="120" x2="720" y2="120"/>
+        <line class="grid" x1="60" y1="80"  x2="720" y2="80"/>
+        <line class="grid" x1="60" y1="40"  x2="720" y2="40"/>
+        <text class="axis-label" x="52" y="203" text-anchor="end">0</text>
+        <text class="axis-label" x="52" y="163" text-anchor="end">10</text>
+        <text class="axis-label" x="52" y="123" text-anchor="end">20</text>
+        <text class="axis-label" x="52" y="83"  text-anchor="end">30</text>
+        <text class="axis-label" x="52" y="43"  text-anchor="end">40</text>
+      </g>
+      <!--
+        obs: 18,13,15,14,31,23,23,16,11,24,28,7
+        exp:  6, 6, 7, 8,10,12,12,15,16,15, 8,5
+        bar height = value * 4 (0..40 -> 0..160)
+        x per month: 60+15 + i*(55) so bars at 75..
+      -->
+      <g id="bars">
+        <!-- Jan -->
+        <rect class="bar-obs" x="80"  y="128" width="18" height="72"/>
+        <rect class="bar-exp" x="100" y="176" width="18" height="24"/>
+        <!-- Feb -->
+        <rect class="bar-obs" x="135" y="148" width="18" height="52"/>
+        <rect class="bar-exp" x="155" y="176" width="18" height="24"/>
+        <!-- Mar -->
+        <rect class="bar-obs" x="190" y="140" width="18" height="60"/>
+        <rect class="bar-exp" x="210" y="172" width="18" height="28"/>
+        <!-- Apr -->
+        <rect class="bar-obs" x="245" y="144" width="18" height="56"/>
+        <rect class="bar-exp" x="265" y="168" width="18" height="32"/>
+        <!-- May -->
+        <rect class="bar-obs" x="300" y="76"  width="18" height="124"/>
+        <rect class="bar-exp" x="320" y="160" width="18" height="40"/>
+        <!-- Jun -->
+        <rect class="bar-obs" x="355" y="108" width="18" height="92"/>
+        <rect class="bar-exp" x="375" y="152" width="18" height="48"/>
+        <!-- Jul -->
+        <rect class="bar-obs" x="410" y="108" width="18" height="92"/>
+        <rect class="bar-exp" x="430" y="152" width="18" height="48"/>
+        <!-- Aug -->
+        <rect class="bar-obs" x="465" y="136" width="18" height="64"/>
+        <rect class="bar-exp" x="485" y="140" width="18" height="60"/>
+        <!-- Sep -->
+        <rect class="bar-obs" x="520" y="156" width="18" height="44"/>
+        <rect class="bar-exp" x="540" y="136" width="18" height="64"/>
+        <!-- Oct -->
+        <rect class="bar-obs" x="575" y="104" width="18" height="96"/>
+        <rect class="bar-exp" x="595" y="140" width="18" height="60"/>
+        <!-- Nov -->
+        <rect class="bar-obs" x="630" y="88"  width="18" height="112"/>
+        <rect class="bar-exp" x="650" y="168" width="18" height="32"/>
+        <!-- Dec -->
+        <rect class="bar-obs" x="685" y="172" width="18" height="28"/>
+        <rect class="bar-exp" x="705" y="180" width="18" height="20"/>
+      </g>
+      <!-- x labels -->
+      <g>
+        <text class="axis-label" x="99"  y="222" text-anchor="middle">Jan</text>
+        <text class="axis-label" x="154" y="222" text-anchor="middle">Feb</text>
+        <text class="axis-label" x="209" y="222" text-anchor="middle">Mar</text>
+        <text class="axis-label" x="264" y="222" text-anchor="middle">Apr</text>
+        <text class="axis-label" x="319" y="222" text-anchor="middle">May</text>
+        <text class="axis-label" x="374" y="222" text-anchor="middle">Jun</text>
+        <text class="axis-label" x="429" y="222" text-anchor="middle">Jul</text>
+        <text class="axis-label" x="484" y="222" text-anchor="middle">Aug</text>
+        <text class="axis-label" x="539" y="222" text-anchor="middle">Sep</text>
+        <text class="axis-label" x="594" y="222" text-anchor="middle">Oct</text>
+        <text class="axis-label" x="649" y="222" text-anchor="middle">Nov</text>
+        <text class="axis-label" x="704" y="222" text-anchor="middle">Dec</text>
+      </g>
+      <g transform="translate(60,12)">
+        <rect class="bar-obs" x="0" y="0" width="14" height="10"/>
+        <text class="legend-text" x="20" y="9">observed at gate 60</text>
+        <rect class="bar-exp" x="180" y="0" width="14" height="10"/>
+        <text class="legend-text" x="200" y="9">transcript profile</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2><span class="kicker">04</span>By symbol</h2>
+  <table class="sweep">
+    <thead>
+      <tr><th>Symbol</th><th>n trades</th><th>hits</th><th>hit rate</th><th>total P&amp;L</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>NQ</td><td>107</td><td>96</td><td>0.897</td><td>−$284,385</td></tr>
+      <tr><td>ES</td><td>74</td><td>66</td><td>0.892</td><td>−$62,855</td></tr>
+      <tr><td>ZS</td><td>73</td><td>61</td><td>0.836</td><td>+$9,484</td></tr>
+      <tr><td>CL</td><td>15</td><td>0</td><td>0.000</td><td>+$322</td></tr>
+    </tbody>
+  </table>
+
+  <h2><span class="kicker">05</span>What this run tells us</h2>
+  <ul class="take">
+    <li>
+      <strong>The stack works end-to-end.</strong> Ingest → label → train → walk-forward
+      → JSON report + saved <code>.joblib</code>. Every seam we shipped in
+      Sprints 1–8 executed, in order, without a human in the loop.
+    </li>
+    <li>
+      <strong>The classifier has weak signal (AUC 0.565).</strong> Non-random,
+      but nowhere near what would be required to earn a calibrated 90 probability.
+      A stronger feature set (real S/R clearance from Sprint 2's <code>futures_features</code>,
+      cross-instrument correlation, IV term structure) is the next honest place to invest.
+    </li>
+    <li>
+      <strong>High hit rate ≠ profitable</strong> in this simulator. The delta-linear
+      P&amp;L model books mark-to-market at the end of a hold when the target isn't
+      hit — so a 90% winner rate with a 30-point average loser and a 22.5-point
+      winner still bleeds. Sprint 10 needs a true option mark-to-market
+      that respects the "fixed $ target, no stop" rule from the transcript.
+    </li>
+    <li>
+      <strong>The 90 gate is a claim, not a demonstration.</strong> With the current
+      feature set the model produces <em>no</em> probabilities above 85, so on this
+      dataset the transcript's advertised gate ships zero trades. Neither confirms
+      nor refutes the transcript — just shows what the current features can support.
+    </li>
+    <li>
+      <strong>Where the numbers came from.</strong> 3 years × 4 symbols × 252 bidays
+      = 3,024 bars; 1,856 candidates after DTE/stride filters. Synthetic
+      multi-regime data — not real market data. Every number here is honest
+      about that provenance.
+    </li>
+  </ul>
+
+  <div class="footnote">
+    <strong>Reproducibility.</strong> Run
+    <code>python scripts/run_ladder_pipeline.py --data synthetic --years 3 --gate 60</code>
+    from the WTTracker checkout. Outputs land in <code>out/ladder_run/</code>:
+    <code>ladder_model.joblib</code> and <code>report.json</code>.
+    Swap <code>--data yfinance</code> in an environment with outbound HTTPS to
+    Yahoo Finance for real CL / NQ / ES / ZS continuous-contract bars.
+  </div>
+</div>

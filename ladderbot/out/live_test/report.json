@@ -1,0 +1,200 @@
+{
+  "generated_at": "2026-08-03T10:53:30.471849Z",
+  "training": {
+    "n_train": 1392,
+    "n_test": 464,
+    "base_rate": 0.584051724137931,
+    "test_accuracy": 0.4698275862068966,
+    "test_brier": 0.24688601533667773,
+    "test_auc": 0.5649474155292011,
+    "cv_fold_aucs": [
+      0.5020084422657952,
+      0.5393839723164423,
+      0.48635135135135144
+    ]
+  },
+  "single_pass_backtest": {
+    "n_trades": 269,
+    "n_hits": 223,
+    "hit_rate": 0.828996282527881,
+    "total_pnl": -337434.7999662324,
+    "avg_pnl_per_trade": -1254.4044608410127,
+    "cycles_completed": 22,
+    "by_symbol": {
+      "ES": {
+        "n": 74,
+        "hits": 66,
+        "pnl": -62855.255191675016,
+        "hit_rate": 0.8918918918918919
+      },
+      "ZS": {
+        "n": 73,
+        "hits": 61,
+        "pnl": 9484.164450941107,
+        "hit_rate": 0.8356164383561644
+      },
+      "NQ": {
+        "n": 107,
+        "hits": 96,
+        "pnl": -284385.2763902728,
+        "hit_rate": 0.897196261682243
+      },
+      "CL": {
+        "n": 15,
+        "hits": 0,
+        "pnl": 321.5671647743619,
+        "hit_rate": 0.0
+      }
+    },
+    "monthly_hits": {
+      "1": 18,
+      "2": 13,
+      "3": 15,
+      "4": 14,
+      "5": 31,
+      "6": 23,
+      "7": 23,
+      "8": 16,
+      "9": 11,
+      "10": 24,
+      "11": 28,
+      "12": 7
+    },
+    "profile": {
+      "observed": {
+        "1": 18,
+        "2": 13,
+        "3": 15,
+        "4": 14,
+        "5": 31,
+        "6": 23,
+        "7": 23,
+        "8": 16,
+        "9": 11,
+        "10": 24,
+        "11": 28,
+        "12": 7
+      },
+      "expected": {
+        "1": 6,
+        "2": 6,
+        "3": 7,
+        "4": 8,
+        "5": 10,
+        "6": 12,
+        "7": 12,
+        "8": 15,
+        "9": 16,
+        "10": 15,
+        "11": 8,
+        "12": 5
+      },
+      "diff": {
+        "1": 12,
+        "2": 7,
+        "3": 8,
+        "4": 6,
+        "5": 21,
+        "6": 11,
+        "7": 11,
+        "8": 1,
+        "9": -5,
+        "10": 9,
+        "11": 20,
+        "12": 2
+      },
+      "correlation_with_transcript": 0.22523763038954897,
+      "total_observed": 223,
+      "total_expected": 120
+    }
+  },
+  "gate_sweep": [
+    {
+      "gate": 50,
+      "n_trades": 1824,
+      "n_hits": 1057,
+      "hit_rate": 0.5794956140350878,
+      "total_pnl": -3991674.3297621594
+    },
+    {
+      "gate": 55,
+      "n_trades": 1788,
+      "n_hits": 1047,
+      "hit_rate": 0.5855704697986577,
+      "total_pnl": -3953239.0119116977
+    },
+    {
+      "gate": 60,
+      "n_trades": 269,
+      "n_hits": 223,
+      "hit_rate": 0.828996282527881,
+      "total_pnl": -337434.7999662324
+    },
+    {
+      "gate": 65,
+      "n_trades": 40,
+      "n_hits": 39,
+      "hit_rate": 0.975,
+      "total_pnl": 37018.71594104752
+    },
+    {
+      "gate": 70,
+      "n_trades": 19,
+      "n_hits": 19,
+      "hit_rate": 1.0,
+      "total_pnl": 19000.0
+    },
+    {
+      "gate": 75,
+      "n_trades": 11,
+      "n_hits": 11,
+      "hit_rate": 1.0,
+      "total_pnl": 11000.0
+    },
+    {
+      "gate": 80,
+      "n_trades": 4,
+      "n_hits": 4,
+      "hit_rate": 1.0,
+      "total_pnl": 4000.0
+    },
+    {
+      "gate": 85,
+      "n_trades": 0,
+      "n_hits": 0,
+      "hit_rate": 0.0,
+      "total_pnl": 0
+    },
+    {
+      "gate": 90,
+      "n_trades": 0,
+      "n_hits": 0,
+      "hit_rate": 0.0,
+      "total_pnl": 0
+    },
+    {
+      "gate": 95,
+      "n_trades": 0,
+      "n_hits": 0,
+      "hit_rate": 0.0,
+      "total_pnl": 0
+    }
+  ],
+  "walk_forward": {
+    "windows": [],
+    "combined_hit_rate": 0.0,
+    "combined_pnl": 0.0,
+    "combined_profile_correlation": null
+  },
+  "config": {
+    "symbols": [
+      "CL",
+      "NQ",
+      "ES",
+      "ZS"
+    ],
+    "gate": 60.0,
+    "per_option_target": 200.0,
+    "contracts": 5
+  }
+}

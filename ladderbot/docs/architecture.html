@@ -1,0 +1,672 @@
+<title>LadderBot — 4-repo integration architecture</title>
+<style>
+  :root {
+    --ground: #F5F1E8;
+    --ink: #1A1D24;
+    --ink-soft: #3D4048;
+    --muted: #6B6E75;
+    --rule: #C7C1B3;
+    --panel: #EBE6D8;
+    --panel-strong: #E0DAC8;
+
+    --amber: #E8B04A;         /* Bee_bot */
+    --slate: #6B95C4;         /* DATASOURCE */
+    --violet: #A585C0;        /* Mastery */
+    --sage: #7EA88A;          /* WTTracker */
+    --brick: #C4623D;         /* kill-switch / warn */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0F1218;
+      --ink: #E8E6DF;
+      --ink-soft: #B8B5A9;
+      --muted: #8A8C90;
+      --rule: #2C2F36;
+      --panel: #171B22;
+      --panel-strong: #1D222B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0F1218;
+    --ink: #E8E6DF;
+    --ink-soft: #B8B5A9;
+    --muted: #8A8C90;
+    --rule: #2C2F36;
+    --panel: #171B22;
+    --panel-strong: #1D222B;
+  }
+  :root[data-theme="light"] {
+    --ground: #F5F1E8;
+    --ink: #1A1D24;
+    --ink-soft: #3D4048;
+    --muted: #6B6E75;
+    --rule: #C7C1B3;
+    --panel: #EBE6D8;
+    --panel-strong: #E0DAC8;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+  }
+
+  header .eyebrow {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-weight: 500;
+    font-size: 44px;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 14px;
+    color: var(--ink);
+  }
+  header p.lede {
+    max-width: 62ch;
+    font-size: 16px;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  .ledger {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    margin: 44px 0 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .ledger .row {
+    padding: 18px 20px;
+    border-right: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .ledger .row:last-child { border-right: none; }
+  .ledger .repo {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    color: var(--ink);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .ledger .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    transform: translateY(0);
+  }
+  .ledger .role {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .ledger .stats {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+  .ledger .stats b { font-weight: 600; color: var(--ink); }
+
+  .section-label {
+    margin: 56px 0 20px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .section-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--rule);
+  }
+
+  .diagram-frame {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 24px;
+    overflow-x: auto;
+  }
+  .diagram-frame svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-width: 900px;
+  }
+
+  .legend {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    margin: 22px 0 0;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend i {
+    width: 22px; height: 2px; background: currentColor;
+    display: inline-block; vertical-align: middle;
+  }
+  .legend i.dashed {
+    background-image: linear-gradient(90deg, currentColor 60%, transparent 60%);
+    background-size: 6px 2px;
+    background-color: transparent;
+  }
+
+  .footnote {
+    margin-top: 40px;
+    padding: 20px 24px;
+    border-left: 3px solid var(--amber);
+    background: var(--panel);
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .footnote code {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    background: var(--panel-strong);
+    padding: 1px 6px;
+  }
+
+  /* --- SVG token bindings so both themes work with one markup --- */
+  svg .lane-rect {
+    fill: none;
+    stroke: var(--rule);
+    stroke-width: 1;
+  }
+  svg .lane-title {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 15px;
+    fill: var(--ink);
+  }
+  svg .band-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    fill: var(--muted);
+  }
+  svg .node-rect {
+    fill: var(--ground);
+    stroke: var(--ink);
+    stroke-width: 1;
+  }
+  svg .node-name {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+    fill: var(--ink);
+  }
+  svg .node-sub {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    fill: var(--muted);
+  }
+  svg .node-tag {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    fill: var(--ground);
+  }
+  svg .arrow {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.25;
+  }
+  svg .arrow-dashed {
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.25;
+    stroke-dasharray: 4 3;
+  }
+  svg .arrow-label {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 10px;
+    fill: var(--muted);
+  }
+  svg .tick-note {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-size: 12px;
+    fill: var(--muted);
+  }
+
+  @media (max-width: 720px) {
+    .wrap { padding: 32px 20px 56px; }
+    h1 { font-size: 32px; }
+    .ledger { grid-template-columns: 1fr 1fr; }
+    .ledger .row:nth-child(2) { border-right: none; }
+    .ledger .row:nth-child(-n+2) { border-bottom: 1px solid var(--rule); }
+  }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">LadderBot · integration architecture</p>
+    <h1>Not a new repo — a spine that runs through four existing ones.</h1>
+    <p class="lede">
+      LadderBot is Ms. Juanita's ladder-scored futures-options method translated into code.
+      No standalone repo was created; each of the four working repos hosts the layer that
+      naturally fits its purpose, and the layers compose at runtime through explicit
+      protocol boundaries.
+    </p>
+  </header>
+
+  <div class="ledger" role="table" aria-label="Repo ledger">
+    <div class="row">
+      <div class="repo"><span class="swatch" style="background:#E8B04A"></span>Bee_bot-7-12-26</div>
+      <div class="role">Runtime engine</div>
+      <div class="stats"><b>~3,600</b> lines · <b>34</b> tests · sprints 1, 4, 5, 6, 8</div>
+    </div>
+    <div class="row">
+      <div class="repo"><span class="swatch" style="background:#6B95C4"></span>DATASOURCE-9-24-25</div>
+      <div class="role">Feature pipeline</div>
+      <div class="stats"><b>~750</b> lines · <b>11</b> tests · sprint 2</div>
+    </div>
+    <div class="row">
+      <div class="repo"><span class="swatch" style="background:#A585C0"></span>Mastery</div>
+      <div class="role">Calibrated ML scorer</div>
+      <div class="stats"><b>~700</b> lines · <b>7</b> tests · sprint 3</div>
+    </div>
+    <div class="row">
+      <div class="repo"><span class="swatch" style="background:#7EA88A"></span>WTTracker</div>
+      <div class="role">Backtest &amp; validation</div>
+      <div class="stats"><b>~1,000</b> lines · <b>11</b> tests · sprints 7, 8</div>
+    </div>
+  </div>
+
+  <p class="section-label">Build diagram</p>
+
+  <div class="diagram-frame">
+    <svg viewBox="0 0 1200 940" xmlns="http://www.w3.org/2000/svg" aria-labelledby="diagTitle">
+      <title id="diagTitle">LadderBot module composition across four repos</title>
+
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="arrow-open" viewBox="0 0 10 10" refX="9" refY="5"
+                markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10" fill="none" stroke="currentColor" stroke-width="1.25"/>
+        </marker>
+      </defs>
+
+      <!-- Three vertical bands -->
+      <g>
+        <rect class="lane-rect" x="20"  y="60"  width="330" height="850" rx="2"/>
+        <rect class="lane-rect" x="380" y="60"  width="440" height="850" rx="2"/>
+        <rect class="lane-rect" x="850" y="60"  width="330" height="850" rx="2"/>
+
+        <text class="band-label" x="36"  y="82">Offline · training &amp; validation</text>
+        <text class="band-label" x="396" y="82">Runtime · live tick loop</text>
+        <text class="band-label" x="866" y="82">Persistence &amp; observability</text>
+      </g>
+
+      <!-- ============================================================= -->
+      <!-- LEFT BAND: offline pipeline                                    -->
+      <!-- ============================================================= -->
+
+      <!-- Historical bars -->
+      <g>
+        <rect class="node-rect" x="60" y="120" width="250" height="52" stroke="#7EA88A" stroke-width="2"/>
+        <rect x="60" y="120" width="60" height="14" fill="#7EA88A"/>
+        <text class="node-tag" x="66" y="130">wt · loader</text>
+        <text class="node-name" x="70" y="152">BarLoader</text>
+        <text class="node-sub"  x="70" y="166">OHLCV CSVs per symbol</text>
+      </g>
+
+      <!-- Feature bundle -->
+      <g>
+        <rect class="node-rect" x="60" y="200" width="250" height="70" stroke="#6B95C4" stroke-width="2"/>
+        <rect x="60" y="200" width="72" height="14" fill="#6B95C4"/>
+        <text class="node-tag" x="66" y="210">datasource</text>
+        <text class="node-name" x="70" y="234">futures_features</text>
+        <text class="node-sub"  x="70" y="250">S/R · fib · greeks · IV</text>
+        <text class="node-sub"  x="70" y="262">seasonality · chain</text>
+      </g>
+
+      <!-- Dataset -->
+      <g>
+        <rect class="node-rect" x="60" y="298" width="250" height="52" stroke="#A585C0" stroke-width="2"/>
+        <rect x="60" y="298" width="52" height="14" fill="#A585C0"/>
+        <text class="node-tag" x="66" y="308">mastery</text>
+        <text class="node-name" x="70" y="330">OutcomeLabeler · build_dataset</text>
+        <text class="node-sub"  x="70" y="344">delta-linear P&amp;L labels</text>
+      </g>
+
+      <!-- Classifier -->
+      <g>
+        <rect class="node-rect" x="60" y="378" width="250" height="70" stroke="#A585C0" stroke-width="2"/>
+        <rect x="60" y="378" width="52" height="14" fill="#A585C0"/>
+        <text class="node-tag" x="66" y="388">mastery</text>
+        <text class="node-name" x="70" y="412">LadderClassifier</text>
+        <text class="node-sub"  x="70" y="428">GBDT + isotonic</text>
+        <text class="node-sub"  x="70" y="440">calibrated on outcomes</text>
+      </g>
+
+      <!-- Backtester -->
+      <g>
+        <rect class="node-rect" x="60" y="480" width="250" height="70" stroke="#7EA88A" stroke-width="2"/>
+        <rect x="60" y="480" width="76" height="14" fill="#7EA88A"/>
+        <text class="node-tag" x="66" y="490">wt · harness</text>
+        <text class="node-name" x="70" y="514">Backtester</text>
+        <text class="node-sub"  x="70" y="530">walk each symbol · gate ≥ 90</text>
+        <text class="node-sub"  x="70" y="542">respects 12-trade cycle</text>
+      </g>
+
+      <!-- WalkForward -->
+      <g>
+        <rect class="node-rect" x="60" y="578" width="250" height="70" stroke="#7EA88A" stroke-width="2"/>
+        <rect x="60" y="578" width="76" height="14" fill="#7EA88A"/>
+        <text class="node-tag" x="66" y="588">wt · walkforward</text>
+        <text class="node-name" x="70" y="612">WalkForwardValidator</text>
+        <text class="node-sub"  x="70" y="628">train / test / roll</text>
+        <text class="node-sub"  x="70" y="640">per-window report</text>
+      </g>
+
+      <!-- Report -->
+      <g>
+        <rect class="node-rect" x="60" y="678" width="250" height="86" stroke="#7EA88A" stroke-width="2"/>
+        <rect x="60" y="678" width="66" height="14" fill="#7EA88A"/>
+        <text class="node-tag" x="66" y="688">wt · report</text>
+        <text class="node-name" x="70" y="712">monthly_profile_comparison</text>
+        <text class="node-sub"  x="70" y="728">vs TRANSCRIPT_PROFILE</text>
+        <text class="node-sub"  x="70" y="742">May=10 · Jun=12 · Aug-Oct 15-16</text>
+        <text class="node-sub"  x="70" y="754">Pearson r · hit-rate · PnL</text>
+      </g>
+
+      <!-- Bindings box -->
+      <g>
+        <rect class="node-rect" x="60" y="792" width="250" height="80" stroke="#7EA88A" stroke-width="2" stroke-dasharray="3 3"/>
+        <rect x="60" y="792" width="80" height="14" fill="#7EA88A"/>
+        <text class="node-tag" x="66" y="802">wt · bindings</text>
+        <text class="node-name" x="70" y="826">ladder_bindings</text>
+        <text class="node-sub"  x="70" y="842">sys.path shim →</text>
+        <text class="node-sub"  x="70" y="854">Bee_bot + Mastery + DS</text>
+      </g>
+
+      <!-- Left-band internal arrows -->
+      <g style="color: var(--muted)">
+        <path class="arrow" d="M185,172 L185,200" marker-end="url(#arrow)"/>
+        <path class="arrow" d="M185,270 L185,298" marker-end="url(#arrow)"/>
+        <path class="arrow" d="M185,350 L185,378" marker-end="url(#arrow)"/>
+        <path class="arrow" d="M185,448 L185,480" marker-end="url(#arrow)"/>
+        <path class="arrow" d="M185,550 L185,578" marker-end="url(#arrow)"/>
+        <path class="arrow" d="M185,648 L185,678" marker-end="url(#arrow)"/>
+      </g>
+
+      <!-- ============================================================= -->
+      <!-- CENTER BAND: runtime tick loop                                 -->
+      <!-- ============================================================= -->
+
+      <!-- LadderLiveRunner (top) -->
+      <g>
+        <rect class="node-rect" x="440" y="120" width="320" height="70" stroke="#E8B04A" stroke-width="2.5"/>
+        <rect x="440" y="120" width="62" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="446" y="130">bee · runtime</text>
+        <text class="node-name" x="450" y="154">LadderLiveRunner</text>
+        <text class="node-sub"  x="450" y="170">tick() = one signal cycle</text>
+        <text class="node-sub"  x="450" y="182">from_config() builds the stack</text>
+      </g>
+
+      <!-- Market data feed -->
+      <g>
+        <rect class="node-rect" x="440" y="220" width="150" height="52" stroke="var(--ink-soft)" stroke-width="1"/>
+        <text class="node-sub"  x="448" y="238">protocol</text>
+        <text class="node-name" x="450" y="254">MarketDataFeed</text>
+        <text class="node-sub"  x="450" y="266">latest_bars(symbols)</text>
+      </g>
+
+      <!-- GuardedEngine -->
+      <g>
+        <rect class="node-rect" x="610" y="220" width="200" height="52" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="610" y="220" width="80" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="616" y="230">bee · governance</text>
+        <text class="node-name" x="620" y="254">GuardedEngine</text>
+        <text class="node-sub"  x="620" y="266">check → open → alert</text>
+      </g>
+
+      <!-- PersistentEngine -->
+      <g>
+        <rect class="node-rect" x="440" y="298" width="200" height="52" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="440" y="298" width="82" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="446" y="308">bee · persistence</text>
+        <text class="node-name" x="450" y="332">PersistentEngine</text>
+        <text class="node-sub"  x="450" y="344">write-through → SQLite</text>
+      </g>
+
+      <!-- LadderExecutionEngine -->
+      <g>
+        <rect class="node-rect" x="440" y="378" width="200" height="70" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="440" y="378" width="66" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="446" y="388">bee · execution</text>
+        <text class="node-name" x="450" y="412">LadderExecutionEngine</text>
+        <text class="node-sub"  x="450" y="428">signal → slip → order</text>
+        <text class="node-sub"  x="450" y="440">watches for target</text>
+      </g>
+
+      <!-- LadderStrategy -->
+      <g>
+        <rect class="node-rect" x="440" y="480" width="200" height="70" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="440" y="480" width="50" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="446" y="490">bee · core</text>
+        <text class="node-name" x="450" y="514">LadderStrategy</text>
+        <text class="node-sub"  x="450" y="530">generate_signals</text>
+        <text class="node-sub"  x="450" y="542">build_trace_slip</text>
+      </g>
+
+      <!-- Scorer (pluggable) -->
+      <g>
+        <rect class="node-rect" x="440" y="578" width="200" height="70" stroke="#E8B04A" stroke-width="2" stroke-dasharray="3 3"/>
+        <rect x="440" y="578" width="88" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="446" y="588">pluggable · scorer</text>
+        <text class="node-name" x="450" y="612">LadderScorer  ·or·</text>
+        <text class="node-name" x="450" y="628">CalibratedLadderScorer</text>
+        <text class="node-sub"  x="450" y="640">score ≥ 90 gate</text>
+      </g>
+
+      <!-- Cycle governor -->
+      <g>
+        <rect class="node-rect" x="440" y="678" width="200" height="70" stroke="#C4623D" stroke-width="2"/>
+        <rect x="440" y="678" width="66" height="14" fill="#C4623D"/>
+        <text class="node-tag" x="446" y="688">bee · cycle</text>
+        <text class="node-name" x="450" y="712">CycleGovernor</text>
+        <text class="node-sub"  x="450" y="728">12-trade cap · no 13th</text>
+        <text class="node-sub"  x="450" y="740">drawdown kill</text>
+      </g>
+
+      <!-- TradingGuard -->
+      <g>
+        <rect class="node-rect" x="670" y="378" width="140" height="70" stroke="#C4623D" stroke-width="2"/>
+        <rect x="670" y="378" width="72" height="14" fill="#C4623D"/>
+        <text class="node-tag" x="676" y="388">bee · limits</text>
+        <text class="node-name" x="680" y="412">TradingGuard</text>
+        <text class="node-sub"  x="680" y="428">per-symbol cap</text>
+        <text class="node-sub"  x="680" y="440">daily loss · cooldown</text>
+      </g>
+
+      <!-- PaperBroker -->
+      <g>
+        <rect class="node-rect" x="670" y="480" width="140" height="70" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="670" y="480" width="52" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="676" y="490">bee · broker</text>
+        <text class="node-name" x="680" y="514">PaperBroker</text>
+        <text class="node-sub"  x="680" y="530">fills at ask / bid</text>
+        <text class="node-sub"  x="680" y="542">slippage config</text>
+      </g>
+
+      <!-- ChainProvider -->
+      <g>
+        <rect class="node-rect" x="670" y="578" width="140" height="70" stroke="#6B95C4" stroke-width="2" stroke-dasharray="3 3"/>
+        <rect x="670" y="578" width="80" height="14" fill="#6B95C4"/>
+        <text class="node-tag" x="676" y="588">via provider</text>
+        <text class="node-name" x="680" y="612">OptionChain</text>
+        <text class="node-name" x="680" y="626">Provider</text>
+        <text class="node-sub"  x="680" y="640">synthetic · file · live</text>
+      </g>
+
+      <!-- Center-band arrows -->
+      <g style="color: var(--muted)">
+        <!-- Runner -> feed -->
+        <path class="arrow" d="M480,190 L480,220" marker-end="url(#arrow)"/>
+        <!-- Runner -> guarded -->
+        <path class="arrow" d="M720,190 L720,220" marker-end="url(#arrow)"/>
+        <!-- feed -> strategy (dashed, sideways) -->
+        <path class="arrow-dashed" d="M515,272 L515,480" marker-end="url(#arrow)"/>
+        <!-- guarded -> persistent -->
+        <path class="arrow" d="M700,272 Q700,285 645,298" marker-end="url(#arrow)"/>
+        <!-- guarded -> guard -->
+        <path class="arrow" d="M735,272 Q735,320 735,378" marker-end="url(#arrow)"/>
+        <!-- persistent -> exec -->
+        <path class="arrow" d="M540,350 L540,378" marker-end="url(#arrow)"/>
+        <!-- exec -> strategy (bidirectional-ish read) -->
+        <path class="arrow" d="M540,448 L540,480" marker-end="url(#arrow)"/>
+        <!-- exec -> broker -->
+        <path class="arrow" d="M640,412 L670,412" marker-end="url(#arrow)"/>
+        <!-- broker -> chain (dashed) -->
+        <path class="arrow-dashed" d="M740,550 L740,578" marker-end="url(#arrow)"/>
+        <!-- strategy -> scorer (uses) -->
+        <path class="arrow" d="M540,550 L540,578" marker-end="url(#arrow)"/>
+        <!-- strategy -> governor -->
+        <path class="arrow" d="M580,550 Q600,610 580,678" marker-end="url(#arrow)"/>
+      </g>
+
+      <!-- ============================================================= -->
+      <!-- CROSS-BAND arrows: offline -> runtime plug-in points          -->
+      <!-- ============================================================= -->
+      <g style="color: var(--muted)">
+        <!-- futures_features -> option_context_provider on strategy -->
+        <path class="arrow-dashed" d="M310,235 Q380,235 380,410 L440,510" marker-end="url(#arrow)"/>
+        <text class="arrow-label"  x="326" y="228">option_context_provider</text>
+
+        <!-- CalibratedLadderScorer -> strategy.scorer -->
+        <path class="arrow-dashed" d="M310,412 Q380,412 380,608 L440,608" marker-end="url(#arrow)"/>
+        <text class="arrow-label"  x="326" y="402">strategy.scorer</text>
+
+        <!-- Backtester consumes strategy scorer for validation -->
+        <path class="arrow-dashed" d="M310,510 Q360,510 360,608 L440,620" marker-end="url(#arrow)" opacity="0"/>
+      </g>
+
+      <!-- ============================================================= -->
+      <!-- RIGHT BAND: persistence & observability                       -->
+      <!-- ============================================================= -->
+
+      <!-- SQLite db -->
+      <g>
+        <rect class="node-rect" x="880" y="220" width="270" height="120" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="880" y="220" width="52" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="886" y="230">bee · db</text>
+        <text class="node-name" x="890" y="254">ladder.db  ·  SQLite (WAL)</text>
+        <text class="node-sub"  x="890" y="276">• cycles</text>
+        <text class="node-sub"  x="890" y="290">• cycle_trades</text>
+        <text class="node-sub"  x="890" y="304">• trace_slips</text>
+        <text class="node-sub"  x="890" y="318">• orders (idempotent COID)</text>
+        <text class="node-sub"  x="890" y="332">• fills</text>
+      </g>
+
+      <!-- Alert channels -->
+      <g>
+        <rect class="node-rect" x="880" y="368" width="270" height="120" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="880" y="368" width="76" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="886" y="378">bee · alerts</text>
+        <text class="node-name" x="890" y="402">AlertChannel</text>
+        <text class="node-sub"  x="890" y="422">• LogAlertChannel</text>
+        <text class="node-sub"  x="890" y="436">• WebhookAlertChannel</text>
+        <text class="node-sub"  x="890" y="450">• MultiplexAlertChannel</text>
+        <text class="node-sub"  x="890" y="470">events: trade_opened,</text>
+        <text class="node-sub"  x="890" y="482">trade_closed, cycle_locked</text>
+      </g>
+
+      <!-- Dashboard -->
+      <g>
+        <rect class="node-rect" x="880" y="516" width="270" height="106" stroke="#E8B04A" stroke-width="2"/>
+        <rect x="880" y="516" width="98" height="14" fill="#E8B04A"/>
+        <text class="node-tag" x="886" y="526">bee · dashboard</text>
+        <text class="node-name" x="890" y="550">dashboard_snapshot()</text>
+        <text class="node-sub"  x="890" y="570">framework-free dict</text>
+        <text class="node-sub"  x="890" y="584">• cycle progress · trades / 12</text>
+        <text class="node-sub"  x="890" y="598">• drawdown · open positions</text>
+        <text class="node-sub"  x="890" y="612">• recent slips · guard state</text>
+      </g>
+
+      <!-- Right-band cross-arrows -->
+      <g style="color: var(--muted)">
+        <!-- PersistentEngine writes to db -->
+        <path class="arrow" d="M640,324 L880,280" marker-end="url(#arrow)"/>
+        <text class="arrow-label" x="700" y="298">writes</text>
+
+        <!-- GuardedEngine emits alerts -->
+        <path class="arrow" d="M810,246 L880,410" marker-end="url(#arrow)"/>
+        <text class="arrow-label" x="820" y="330">emits</text>
+
+        <!-- dashboard reads from db -->
+        <path class="arrow-dashed" d="M1015,516 L1015,340" marker-end="url(#arrow)"/>
+        <text class="arrow-label" x="1024" y="440">reads</text>
+      </g>
+
+      <!-- tick-loop annotation -->
+      <text class="tick-note" x="440" y="770">
+        one tick =
+      </text>
+      <text class="tick-note" x="440" y="786">
+        feed → generate_signals → guarded.run_signal → target-watch → book P&amp;L
+      </text>
+
+      <!-- transcript profile callout (bottom left) -->
+      <text class="tick-note" x="60" y="895">Truth check: r(observed, transcript) — the number the whole stack exists to move.</text>
+    </svg>
+  </div>
+
+  <div class="legend">
+    <span><i></i> composition arrow</span>
+    <span><i class="dashed"></i> pluggable protocol / cross-repo</span>
+    <span><i style="background:#E8B04A"></i> Bee_bot</span>
+    <span><i style="background:#6B95C4"></i> DATASOURCE</span>
+    <span><i style="background:#A585C0"></i> Mastery</span>
+    <span><i style="background:#7EA88A"></i> WTTracker</span>
+    <span><i style="background:#C4623D"></i> kill-switch / limit</span>
+  </div>
+
+  <div class="footnote">
+    <strong>Why no new repo.</strong>
+    The ladder methodology is a strategy, not a platform. It plugs into Bee_bot's existing
+    <code>TradingStrategy</code> base class, borrows DATASOURCE's <code>gxt/analytics</code>
+    conventions, adds an <code>mastery_ladder_ml</code> package next to Mastery's other
+    Python modules, and lands its backtest surface inside WTTracker's
+    <code>backend-trading-service</code>. Cross-repo composition happens through two
+    protocol seams — <code>option_context_provider</code> and <code>strategy.scorer</code> —
+    so each repo can be developed and tested in isolation.
+  </div>
+</div>

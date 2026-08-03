@@ -1,0 +1,204 @@
+services:
+  banc-mongodb:
+    image: mongo:7
+    container_name: banc-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: bancadmin
+      MONGO_INITDB_ROOT_PASSWORD: BancMongo2026Secure!
+      MONGO_INITDB_DATABASE: banc_of_el
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+      - ./backend/database/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    ports:
+      - "27017:27017"
+    networks:
+      - banc-network
+    command: mongod --auth
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  banc-postgres:
+    image: postgres:16-alpine
+    container_name: banc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: opendoor
+      POSTGRES_PASSWORD: OpenDoor2026Secure!
+      POSTGRES_DB: opendoor_deals
+      POSTGRES_MULTIPLE_DATABASES: opendoor_profiles,opendoor_network
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/deal-service/database/migrations:/docker-entrypoint-initdb.d/01-deals:ro
+      - ./backend/profile-service/database/migrations:/docker-entrypoint-initdb.d/02-profiles:ro
+      - ./backend/network-service/database/migrations:/docker-entrypoint-initdb.d/03-network:ro
+      - ./backend/database/create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - banc-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opendoor -d opendoor_deals"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  banc-redis:
+    image: redis:7-alpine
+    container_name: banc-redis
+    restart: unless-stopped
+    command: redis-server --requirepass BancRedis2026Key!
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - banc-network
+
+  banc-api:
+    build: ./backend
+    container_name: banc-api
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://bancapp:BancApp2026Pass!@banc-mongodb:27017/banc_of_el?authSource=admin
+      REDIS_URL: redis://:BancRedis2026Key!@banc-redis:6379
+      JWT_SECRET: 4a555606b0fc7e559747002426394091b33899def47103587e4334344d88abfc
+      SMTP_HOST: smtp.sendgrid.net
+      SMTP_PORT: 587
+      SMTP_USER: apikey
+      SMTP_PASS: ${SENDGRID_API_KEY:-changeme}
+      EMAIL_FROM: admin@banc-of-el-trust-international.org
+      TRUST_PROXY: 'true'
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - banc-network
+    depends_on:
+      banc-mongodb:
+        condition: service_healthy
+
+  neural-assistant:
+    build: ./neural-assistant
+    container_name: neural-assistant
+    restart: unless-stopped
+    env_file:
+      - ./neural-assistant/.env
+    volumes:
+      - ./neural-assistant:/app
+    networks:
+      - banc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  profile-service:
+    build: ./backend/profile-service
+    container_name: profile-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://opendoor:OpenDoor2026Secure!@banc-postgres:5432/opendoor_profiles
+      ALLOWED_ORIGINS: "http://localhost:3000,https://claude.ai,https://banc-of-el-trust-international.org,http://76.13.24.188"
+      UPLOAD_DIR: /var/opendoor/uploads/profiles
+      PROFILE_PORT: "8004"
+    ports:
+      - "8004:8004"
+    volumes:
+      - profile_uploads:/var/opendoor/uploads/profiles
+    networks:
+      - banc-network
+    depends_on:
+      banc-postgres:
+        condition: service_healthy
+
+  network-service:
+    build: ./backend/network-service
+    container_name: network-service
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://opendoor:OpenDoor2026Secure!@banc-postgres:5432/opendoor_network
+      ALLOWED_ORIGINS: "http://localhost:3000,https://claude.ai,https://banc-of-el-trust-international.org,http://76.13.24.188"
+      UPLOAD_DIR: /var/opendoor/uploads/posts
+      NETWORK_PORT: "8005"
+    ports:
+      - "8005:8005"
+    volumes:
+      - post_uploads:/var/opendoor/uploads/posts
+    networks:
+      - banc-network
+    depends_on:
+      banc-postgres:
+        condition: service_healthy
+
+  ladderbot:
+    build:
+      context: ./ladderbot
+      dockerfile: deploy/docker/Dockerfile
+    container_name: ladderbot
+    restart: unless-stopped
+    environment:
+      LADDER_DB_PATH: /var/lib/ladderbot/ladder.db
+      LADDER_REPORT_DIR: /var/lib/ladderbot/out/ladder_run
+      LADDER_UI_DIST_DIR: /srv/ladderbot-ui
+      LADDER_BAR_SOURCE: "${LADDER_BAR_SOURCE:-yfinance}"
+      LADDER_CORS_ORIGINS: "${LADDER_CORS_ORIGINS:-https://banc-of-el-trust-international.org}"
+      GUNICORN_WORKERS: "${GUNICORN_WORKERS:-2}"
+      GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-60}"
+      # Schwab broker (set these when OAuth is configured)
+      # SCHWAB_APP_KEY: "${SCHWAB_APP_KEY:-}"
+      # SCHWAB_APP_SECRET: "${SCHWAB_APP_SECRET:-}"
+      # SCHWAB_CALLBACK_URL: "${SCHWAB_CALLBACK_URL:-https://127.0.0.1}"
+      # SCHWAB_TOKEN_PATH: "/var/lib/ladderbot/schwab_token.json"
+    ports:
+      - "127.0.0.1:5050:5000"
+    volumes:
+      - ladderbot_state:/var/lib/ladderbot
+    networks:
+      - banc-network
+    healthcheck:
+      test: ["CMD-SHELL",
+             "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/api/ladder/health',timeout=3).status==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  banc-nginx:
+    image: nginx:alpine
+    container_name: banc-nginx
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./public:/usr/share/nginx/html:ro
+      - /usr/local/projects/bee_bot:/usr/share/nginx/trader-dashboard:ro
+    networks:
+      - banc-network
+
+networks:
+  banc-network:
+
+volumes:
+  mongodb_data:
+  mongodb_config:
+  redis_data:
+  postgres_data:
+  profile_uploads:
+  post_uploads:
+  ladderbot_state:

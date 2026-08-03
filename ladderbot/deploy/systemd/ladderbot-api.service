@@ -1,0 +1,42 @@
+[Unit]
+Description=LadderBot API (gunicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=ladder
+Group=ladder
+WorkingDirectory=/opt/ladderbot
+EnvironmentFile=/etc/ladderbot/ladderbot-api.env
+ExecStart=/opt/ladderbot/.venv/bin/gunicorn \
+    --workers ${GUNICORN_WORKERS} \
+    --timeout ${GUNICORN_TIMEOUT} \
+    --bind 127.0.0.1:${LADDER_API_PORT} \
+    --access-logfile - \
+    --error-logfile - \
+    ladderbot.wsgi:app
+
+Restart=on-failure
+RestartSec=3s
+KillMode=mixed
+TimeoutStopSec=15
+
+# Hardening — LadderBot has no reason to touch anything except its state dir.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ladderbot
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Systemd type=notify handshake: gunicorn's sd_notify support requires
+# it be launched with --enable-stdio-inheritance if you use socket
+# activation. Type=simple is a safe fallback if you skip that.
+
+[Install]
+WantedBy=multi-user.target

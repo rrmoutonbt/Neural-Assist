@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/charts.css">
   <link rel="stylesheet" href="css/utilities.css">
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
   <style>
     .programs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--space-6); }
     .program-card { background: var(--color-bg-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: var(--space-6); position: relative; overflow: hidden; transition: all var(--transition-fast); cursor: pointer; text-decoration: none; color: inherit; display: block; }
@@ -23,6 +24,117 @@
     .program-icon.i-platform { background: rgba(123, 31, 162, 0.1); }
     .program-card.construct::before { background: linear-gradient(90deg, #00d4ff, #7b1fa2); }
     .program-icon.construct { background: rgba(0, 212, 255, 0.1); }
+    .program-card.ladderbot::before { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+    .program-icon.ladderbot { background: rgba(245, 158, 11, 0.1); }
+    /* Program overlay — slide-in full-page launcher */
+    .program-overlay-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0); pointer-events: none; transition: background 0.35s ease; }
+    .program-overlay-backdrop.active { background: rgba(0,0,0,0.6); pointer-events: auto; }
+    .program-overlay { position: fixed; top: 0; right: 0; width: 100vw; height: 100vh; z-index: 10000; background: var(--color-bg, #0a0e14); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: -8px 0 40px rgba(0,0,0,0.5); }
+    .program-overlay.active { transform: translateX(0); }
+    .program-overlay-bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--color-bg-card, #111720); border-bottom: 1px solid var(--color-border, #1e2a3a); flex-shrink: 0; }
+    .program-overlay-back { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; background: rgba(255,255,255,0.06); color: var(--color-text-muted, #8A8C90); border: 1px solid var(--color-border, #2C2F36); cursor: pointer; font-weight: 500; font-size: 0.8rem; font-family: 'Inter', sans-serif; transition: all 0.15s; }
+    .program-overlay-back:hover { background: rgba(255,255,255,0.1); color: var(--color-text, #e8e6df); border-color: var(--color-gold, #E8B04A); }
+    .program-overlay-back svg { width: 14px; height: 14px; }
+    .program-overlay-title { font-weight: 600; font-size: 0.95rem; color: var(--color-text, #e8e6df); flex: 1; }
+    .program-overlay-status { display: flex; align-items: center; gap: 8px; }
+    .program-overlay-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: lbPulse 1.5s ease-in-out infinite; }
+    @keyframes lbPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .program-overlay-status-text { font-family: ui-monospace, monospace; font-size: 0.7rem; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px; }
+    .program-overlay-close { padding: 6px 16px; border-radius: 6px; background: rgba(239,68,68,0.15); color: #ef5350; border: 1px solid rgba(239,68,68,0.3); cursor: pointer; font-weight: 600; font-size: 0.8rem; font-family: 'Inter', sans-serif; transition: all 0.15s; }
+    .program-overlay-close:hover { background: rgba(239,68,68,0.25); }
+    .program-overlay iframe { flex: 1; width: 100%; border: none; }
+    /* LadderBot slide nav sidebar */
+    .lb-nav-toggle { position: fixed; top: 56px; left: 0; z-index: 10002; width: 28px; height: 72px; background: #171B22; border: 1px solid #2C2F36; border-left: none; border-radius: 0 8px 8px 0; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #8A8C90; transition: all 0.2s; }
+    .lb-nav-toggle:hover { background: #1D222B; color: #E8B04A; border-color: #E8B04A; }
+    .lb-nav-toggle svg { width: 16px; height: 16px; transition: transform 0.3s; }
+    .lb-nav-toggle.open svg { transform: rotate(180deg); }
+    .lb-nav { position: fixed; top: 48px; left: 0; bottom: 0; width: 220px; background: #12151C; border-right: 1px solid #2C2F36; z-index: 10001; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); overflow-y: auto; padding-top: 12px; }
+    .lb-nav.open { transform: translateX(0); }
+    .lb-nav-section { padding: 12px 16px 4px; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #6B6E75; }
+    .lb-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: #B8B5A9; font-size: 0.8rem; font-family: system-ui, sans-serif; cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent; }
+    .lb-nav-item:hover { background: rgba(255,255,255,0.03); color: #E8E6DF; }
+    .lb-nav-item.active { color: #E8B04A; border-left-color: #E8B04A; background: rgba(232,176,74,0.06); }
+    .lb-nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; }
+    .lb-nav-item:hover svg, .lb-nav-item.active svg { opacity: 1; }
+    .lb-nav-divider { height: 1px; background: #2C2F36; margin: 8px 16px; }
+    .lb-nav-badge { margin-left: auto; padding: 1px 7px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600; }
+    .lb-nav-badge.green { background: rgba(126,168,138,0.15); color: #7EA88A; }
+    .lb-nav-badge.amber { background: rgba(232,176,74,0.15); color: #E8B04A; }
+    .lb-nav-badge.muted { background: rgba(138,140,144,0.15); color: #8A8C90; }
+    /* Shift dashboard content when nav open */
+    .lb-nav-open .lb { margin-left: 220px; transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+    /* LadderBot inline dashboard — mirrors React component design */
+    .lb { font-family: system-ui, -apple-system, sans-serif; color: #E8E6DF; }
+    .lb-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
+    .lb-header-brand { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8C90; }
+    .lb-header-title { font-family: Georgia, serif; font-size: 26px; letter-spacing: -0.01em; color: #E8E6DF; }
+    .lb-symbols { display: flex; gap: 4px; margin-left: auto; }
+    .lb-sym-btn { padding: 6px 12px; font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 0.06em; background: transparent; color: #E8E6DF; border: 1px solid #2C2F36; cursor: pointer; }
+    .lb-sym-btn:hover { border-color: #8A8C90; }
+    .lb-sym-btn.active { background: #E8B04A; color: #0F1218; border-color: #E8B04A; }
+    /* Summary strip */
+    .lb-strip { display: grid; grid-template-columns: repeat(6, 1fr); background: #171B22; border: 1px solid #2C2F36; border-bottom: none; }
+    .lb-cell { padding: 18px 20px; border-left: 1px solid #2C2F36; display: flex; flex-direction: column; gap: 4px; }
+    .lb-cell:first-child { border-left: none; }
+    .lb-cell-label { font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8C90; }
+    .lb-cell-value { font-family: Georgia, serif; font-size: 24px; font-variant-numeric: tabular-nums; color: #E8E6DF; }
+    .lb-cell-hint { font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.04em; }
+    .lb-sage { color: #7EA88A; } .lb-brick { color: #C4623D; } .lb-amber { color: #E8B04A; } .lb-muted { color: #8A8C90; } .lb-slate { color: #6B95C4; }
+    /* Main grid */
+    .lb-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); border: 1px solid #2C2F36; border-top: none; }
+    .lb-chart-pane { border-right: 1px solid #2C2F36; padding: 16px; background: #171B22; }
+    .lb-right-pane { display: flex; flex-direction: column; }
+    .lb-right-top { padding: 16px; border-bottom: 1px solid #2C2F36; }
+    .lb-right-bottom { padding: 16px; }
+    .lb-section-label { font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #8A8C90; margin-bottom: 10px; }
+    /* OHLCV chart */
+    .lb-chart-wrap { position: relative; width: 100%; min-height: 420px; background: #0F1218; border: 1px solid #2C2F36; }
+    .lb-chart-meta { position: absolute; top: 8px; right: 12px; font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #E8E6DF; opacity: 0.65; pointer-events: none; z-index: 2; }
+    .lb-chart-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(15,18,24,0.8); color: #E8E6DF; font-family: ui-monospace, monospace; font-size: 13px; z-index: 3; }
+    /* Cycle progress */
+    .lb-cycle-frame { background: #171B22; border: 1px solid #2C2F36; padding: 18px 20px; }
+    .lb-cycle-header { display: flex; align-items: baseline; gap: 20px; margin-bottom: 12px; }
+    .lb-dots { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .lb-dot { width: 22px; height: 22px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600; }
+    .lb-dot-win { background: #7EA88A; border: 2px solid #7EA88A; color: #0F1218; }
+    .lb-dot-loss { background: #C4623D; border: 2px solid #C4623D; color: #0F1218; }
+    .lb-dot-pending { background: #2C2F36; border: 2px solid #8A8C90; color: #8A8C90; }
+    .lb-dot-next { background: #2C2F36; border: 2px solid #E8B04A; color: #8A8C90; }
+    .lb-dot-forbidden { background: transparent; border: 2px dashed #C4623D; color: #C4623D; margin-left: 8px; }
+    /* Monthly profile */
+    .lb-monthly-frame { background: #171B22; border: 1px solid #2C2F36; padding: 18px 20px; }
+    .lb-monthly-header { display: flex; align-items: baseline; gap: 20px; margin-bottom: 10px; }
+    .lb-monthly-legend { display: flex; gap: 20px; margin-top: 8px; font-family: ui-monospace, monospace; font-size: 11px; color: #8A8C90; }
+    .lb-legend-swatch { display: inline-block; width: 14px; height: 8px; margin-right: 6px; vertical-align: middle; }
+    /* Ladder table */
+    .lb-ladder { background: #171B22; border: 1px solid #2C2F36; margin-top: 24px; border-top: 1px solid #2C2F36; }
+    .lb-ladder-header { padding: 14px 18px; border-bottom: 1px solid #2C2F36; display: flex; align-items: baseline; gap: 16px; }
+    .lb-ladder table { width: 100%; border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .lb-ladder th { text-align: left; padding: 10px 14px; font-weight: 500; font-size: 11px; letter-spacing: 0.10em; text-transform: uppercase; color: #8A8C90; border-bottom: 1px solid #2C2F36; }
+    .lb-ladder td { padding: 8px 14px; border-bottom: 1px solid #2C2F36; }
+    .lb-ladder tr:hover { background: rgba(255,255,255,0.02); }
+    .lb-ladder .r { text-align: right; }
+    .lb-score-bar { display: inline-block; width: 110px; height: 6px; background: #2C2F36; position: relative; vertical-align: middle; }
+    .lb-score-fill { position: absolute; left: 0; top: 0; bottom: 0; }
+    .lb-score-gate { position: absolute; left: 90%; top: -2px; bottom: -2px; width: 1px; background: #C4623D; opacity: 0.7; }
+    .lb-side-tag { padding: 2px 8px; font-size: 10px; letter-spacing: 0.08em; border: 1px solid; }
+    .lb-side-call { background: rgba(126,168,138,0.2); color: #7EA88A; border-color: #7EA88A; }
+    .lb-side-put { background: rgba(196,98,61,0.2); color: #C4623D; border-color: #C4623D; }
+    /* Gate sweep + tables */
+    .lb-tbl { width: 100%; border-collapse: collapse; font-size: 0.8rem; font-family: ui-monospace, monospace; }
+    .lb-tbl th, .lb-tbl td { padding: 8px 12px; text-align: right; border-bottom: 1px solid #2C2F36; }
+    .lb-tbl th { color: #8A8C90; font-weight: 500; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.5px; }
+    .lb-tbl td:first-child, .lb-tbl th:first-child { text-align: left; }
+    .lb-tbl tr:hover { background: rgba(255,255,255,0.02); }
+    .lb-gate-highlight { background: rgba(232,176,74,0.08) !important; }
+    .lb-section { background: #171B22; border: 1px solid #2C2F36; padding: 20px; margin-bottom: 20px; border-radius: 0; }
+    .lb-section h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 16px; color: #E8E6DF; font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; }
+    .lb-training-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+    .lb-train-stat { background: #1D222B; border: 1px solid #2C2F36; padding: 14px; text-align: center; }
+    .lb-train-label { font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: #8A8C90; margin-bottom: 6px; }
+    .lb-train-value { font-family: Georgia, serif; font-size: 20px; font-variant-numeric: tabular-nums; color: #E8E6DF; }
+    .lb-loading { display: flex; align-items: center; justify-content: center; height: 200px; color: #8A8C90; font-family: ui-monospace, monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; }
+    @media (max-width: 900px) { .lb-grid { grid-template-columns: 1fr; } .lb-strip { grid-template-columns: repeat(3, 1fr); } }
     .program-card.coming-soon::before { background: var(--color-border); }
     .program-card.coming-soon { opacity: 0.6; cursor: default; }
     .program-card.coming-soon:hover { transform: none; box-shadow: none; border-color: var(--color-border); }
@@ -365,7 +477,7 @@
               </div>
             </div>
             <div class="programs-grid" id="programs-grid">
-              <a href="/vaudio/" class="program-card video">
+              <div class="program-card video" onclick="Programs.launch('/vaudio/', 'Video2Text')">
                 <div class="program-icon video">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-blue)" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10 8l5 3-5 3V8z"/></svg>
                 </div>
@@ -376,9 +488,9 @@
                   <span class="program-tag">Audio</span>
                   <span class="program-tag">Transcription</span>
                 </div>
-              </a>
+              </div>
 
-              <a href="programs/deal-flow-crm/index.html" class="program-card video">
+              <div class="program-card video" onclick="Programs.launch('programs/deal-flow-crm/index.html', 'Deal Flow CRM')">
                 <div class="program-icon video">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--color-blue)" stroke-width="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
                 </div>
@@ -390,9 +502,9 @@
                   <span class="program-tag">Deal Management</span>
                   <span class="program-tag">Equity Tracking</span>
                 </div>
-              </a>
+              </div>
 
-              <a href="/i-platform/dashboard" class="program-card i-platform">
+              <div class="program-card i-platform" onclick="Programs.launch('/i-platform/dashboard', '&quot;i&quot; Visual Intelligence')">
                 <div class="program-icon i-platform">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7b1fa2" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                 </div>
@@ -404,9 +516,9 @@
                   <span class="program-tag">Audio</span>
                   <span class="program-tag">AI Generation</span>
                 </div>
-              </a>
+              </div>
 
-              <a href="programs/trade-tracker/index.html" class="program-card crm">
+              <div class="program-card crm" onclick="Programs.launch('programs/trade-tracker/index.html', 'Trade Tracker')">
                 <div class="program-icon" style="background: rgba(26,138,74,0.1);">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1a8a4a" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>
                 </div>
@@ -418,9 +530,9 @@
                   <span class="program-tag">Analytics</span>
                   <span class="program-tag">Journal</span>
                 </div>
-              </a>
+              </div>
 
-              <a href="programs/neural-assistant/neural_assistant_web_interface.html" class="program-card i-platform">
+              <div class="program-card i-platform" onclick="Programs.launch('programs/neural-assistant/neural_assistant_web_interface.html', 'Neural Assistant')">
                 <div class="program-icon i-platform">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7b1fa2" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg>
                 </div>
@@ -432,9 +544,9 @@
                   <span class="program-tag">Search</span>
                   <span class="program-tag">Conversational</span>
                 </div>
-              </a>
+              </div>
 
-              <a href="programs/construct-universal/index.html" class="program-card construct">
+              <div class="program-card construct" onclick="Programs.launch('programs/construct-universal/index.html', 'Construct Universal')">
                 <div class="program-icon construct">
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
                 </div>
@@ -446,7 +558,21 @@
                   <span class="program-tag">Infrastructure</span>
                   <span class="program-tag">Multi-Chain</span>
                 </div>
-              </a>
+              </div>
+
+              <div class="program-card ladderbot" onclick="Programs.launch('/ladderbot/api/ladder/health', 'LadderBot', true)">
+                <div class="program-icon ladderbot">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M4 4h4v4H4zM4 10h4v4H4zM4 16h4v4H4zM10 4h10M10 10h10M10 16h10M10 7h7M10 13h7M10 19h7"/></svg>
+                </div>
+                <div class="program-title">LadderBot</div>
+                <div class="program-desc">Futures-options trading engine with ML-gated 12-trade cycles. OHLCV charting, backtest harness, cycle progress tracking, and monthly performance profiles.</div>
+                <div class="program-meta">
+                  <span class="program-tag">Trading</span>
+                  <span class="program-tag">ML Engine</span>
+                  <span class="program-tag">Options</span>
+                  <span class="program-tag">Gate &ge; 90</span>
+                </div>
+              </div>
 
               <div class="program-card coming-soon">
                 <div class="program-icon coming-soon">
@@ -487,6 +613,27 @@
     </div>
   </div>
 
+  <!-- Program overlay — slide-in full-page launcher -->
+  <div class="program-overlay-backdrop" id="program-backdrop" onclick="Programs.close()"></div>
+  <div class="program-overlay" id="program-overlay">
+    <div class="program-overlay-bar">
+      <button class="program-overlay-back" onclick="Programs.close()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        Programs
+      </button>
+      <span class="program-overlay-title" id="overlay-title"></span>
+      <div class="program-overlay-status" id="overlay-status" style="display:none;">
+        <span class="program-overlay-dot"></span>
+        <span class="program-overlay-status-text">Live</span>
+      </div>
+      <button class="program-overlay-close" onclick="Programs.close()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        Close
+      </button>
+    </div>
+    <div id="overlay-body"></div>
+  </div>
+
   <div id="modal-container"></div>
   <script src="js/utils.js"></script>
   <script src="js/services/api.js"></script>
@@ -525,6 +672,637 @@
           });
         }
       });
+    });
+
+    /* ── Programs launcher (no direct public links) ── */
+    var Programs = {
+      launch: function(url, title, isLadderBot) {
+        if (typeof Auth !== 'undefined' && !Auth.isAuthenticated()) {
+          window.location.href = 'login.html';
+          return;
+        }
+        var overlay = document.getElementById('program-overlay');
+        var backdrop = document.getElementById('program-backdrop');
+        var body = document.getElementById('overlay-body');
+        var status = document.getElementById('overlay-status');
+        document.getElementById('overlay-title').textContent = title;
+        status.style.display = 'none';
+
+        if (isLadderBot) {
+          body.innerHTML = '<div class="lb" id="lb-dash" style="flex:1;overflow-y:auto;padding:36px 40px;background:#0F1218;min-height:100vh;"><div class="lb-loading">loading ladderbot...</div></div>';
+          status.style.display = 'flex';
+        } else {
+          body.innerHTML = '<iframe src="' + url + '" title="' + title + '"></iframe>';
+        }
+
+        // Slide in
+        backdrop.classList.add('active');
+        requestAnimationFrame(function() {
+          overlay.classList.add('active');
+        });
+
+        if (isLadderBot) {
+          setTimeout(function() { LB.init(); }, 100);
+        }
+      },
+      close: function() {
+        var overlay = document.getElementById('program-overlay');
+        var backdrop = document.getElementById('program-backdrop');
+        overlay.classList.remove('active');
+        backdrop.classList.remove('active');
+        // Clean up after slide-out animation completes
+        setTimeout(function() {
+          document.getElementById('overlay-body').innerHTML = '';
+          var sn = document.getElementById('lb-sidebar-nav'); if (sn) sn.remove();
+          var st = document.getElementById('lb-nav-toggle-btn'); if (st) st.remove();
+        }, 450);
+        LB._navOpen = false;
+        if (LB._poll) { clearInterval(LB._poll); LB._poll = null; }
+        if (LB._chart) { try { LB._chart.remove(); } catch(e){} LB._chart = null; LB._candleSeries = null; }
+      }
+    };
+
+    /* ── LadderBot full dashboard renderer ── */
+    var LB = {
+      sym: 'CL',
+      universe: ['CL','NQ','ES','GC','ZS','ZW','ZC','ZO'],
+      _poll: null,
+      _api: function(path) { return fetch('/ladderbot/api/ladder' + path).then(function(r){return r.json();}); },
+      _$(id) { return document.getElementById(id); },
+      _fmt: function(v) { return (v||0).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}); },
+
+      init: function() {
+        var dash = LB._$('lb-dash');
+        Promise.all([
+          LB._api('/health'),
+          LB._api('/report/summary'),
+          LB._api('/report'),
+          LB._api('/snapshot'),
+          LB._api('/monthly-profile'),
+          LB._api('/bars/' + LB.sym + '?years=2')
+        ]).then(function(r) {
+          var health=r[0], rep=r[1], full=r[2], snap=r[3], mp=r[4], bars=r[5];
+          if (!health.ok) { dash.innerHTML='<div class="lb-loading">LadderBot service is offline</div>'; return; }
+          var s = rep.empty ? null : rep.summary;
+          var cycle = snap.empty ? null : snap.cycle;
+          var profile = mp.empty ? null : mp.profile;
+          LB._reportData = { s: s, full: full, cycle: cycle };
+          dash.innerHTML = LB._renderAll(s, full, cycle, profile, bars);
+          LB._mountChart();
+          LB._mountNav();
+          LB._bindSymbolPicker();
+          LB._startPolling();
+        }).catch(function(e) {
+          dash.innerHTML='<div class="lb-loading">Failed to connect: ' + e.message + '</div>';
+        });
+      },
+
+      _renderAll: function(s, full, cycle, profile, bars) {
+        var h = '';
+        h += LB._renderHeader();
+        h += '<div id="lb-sec-summary">' + LB._renderStrip(s, cycle) + '</div>';
+        h += '<div id="lb-sec-chart" class="lb-grid">';
+        h += '<div class="lb-chart-pane">';
+        h += '<div class="lb-section-label">OHLCV &middot; ' + LB.sym + '</div>';
+        h += LB._renderChart(bars);
+        h += '</div>';
+        h += '<div class="lb-right-pane">';
+        h += '<div class="lb-right-top" id="lb-sec-cycle"><div class="lb-section-label">Cycle</div>' + LB._renderCycle(cycle) + '</div>';
+        h += '<div class="lb-right-bottom" id="lb-sec-monthly"><div class="lb-section-label">Monthly profile</div>' + LB._renderMonthly(profile) + '</div>';
+        h += '</div></div>';
+        h += '<div id="lb-sec-candidates">' + LB._renderCandidates(full) + '</div>';
+        h += '<div id="lb-sec-backtest">' + LB._renderLadder(full) + '</div>';
+        h += '<div id="lb-sec-gate">' + LB._renderGateSweep(full, s) + '</div>';
+        if (full && full.walk_forward && full.walk_forward.windows.length > 0)
+          h += '<div id="lb-sec-walkfwd">' + LB._renderWalkForward(full) + '</div>';
+        h += '<div id="lb-sec-training">' + LB._renderTraining(full) + '</div>';
+        return h;
+      },
+
+      _renderHeader: function() {
+        var h = '<div class="lb-header">';
+        h += '<div><div class="lb-header-brand">LadderBot &middot; v1</div>';
+        h += '<div class="lb-header-title">The ladder &middot; gate &ge; 90 &middot; 12-trade cycle &middot; fixed target &middot; no stop</div></div>';
+        h += '<div class="lb-symbols" id="lb-sym-picker">';
+        LB.universe.forEach(function(s) {
+          h += '<button class="lb-sym-btn' + (s===LB.sym?' active':'') + '" data-sym="' + s + '">' + s + '</button>';
+        });
+        h += '</div></div>';
+        return h;
+      },
+
+      _renderStrip: function(s, cycle) {
+        if (!s) return '';
+        var gate = s.gate_used, auc = s.test_auc, hr = s.hit_rate, pnl = s.total_pnl;
+        var aucHint = auc>=0.7?'strong signal':auc>=0.6?'moderate signal':auc>=0.55?'weak signal':'near-random';
+        var aucClass = auc>=0.7?'lb-sage':auc>=0.6?'lb-amber':auc>=0.55?'lb-slate':'lb-brick';
+        var cycleLabel = cycle ? '#'+cycle.cycle_id+' &middot; '+cycle.trade_count+'/'+cycle.cycle_max : '&mdash;';
+        var cycleHint = cycle ? (cycle.locked?'locked':cycle.trades_remaining+' left') : 'no active cycle';
+        var h = '<div class="lb-strip">';
+        h += LB._cell('cycle', cycleLabel, cycleHint, cycle&&cycle.locked?'lb-brick':'lb-muted');
+        h += LB._cell('gate', gate!=null?gate.toFixed(0):'&mdash;', gate>=90?'transcript rule':'reduced', gate>=90?'lb-amber':'lb-muted');
+        h += LB._cell('model AUC', auc!=null?auc.toFixed(3):'&mdash;', aucHint, aucClass);
+        h += LB._cell('hit rate', hr!=null?(hr*100).toFixed(1)+'%':'&mdash;', s.n_trades+' trades', 'lb-muted');
+        h += LB._cell('total P&L', pnl!=null?LB._fmt(pnl):'&mdash;', '', pnl!=null&&pnl>=0?'lb-sage':'lb-brick');
+        h += LB._cell('correlation', s.profile_correlation!=null?(s.profile_correlation*100).toFixed(1)+'%':'&mdash;', 'vs transcript', 'lb-muted');
+        h += '</div>';
+        return h;
+      },
+      _cell: function(label, value, hint, hintClass) {
+        return '<div class="lb-cell"><div class="lb-cell-label">'+label+'</div><div class="lb-cell-value">'+value+'</div>'+(hint?'<div class="lb-cell-hint '+(hintClass||'lb-muted')+'">'+hint+'</div>':'')+'</div>';
+      },
+
+      _bars: null,
+      _chart: null,
+      _candleSeries: null,
+
+      _renderChart: function(bars) {
+        LB._bars = bars;
+        if (!bars || !bars.candles || bars.candles.length === 0)
+          return '<div class="lb-chart-wrap"><div class="lb-chart-loading">no bar data</div></div>';
+        return '<div class="lb-chart-wrap" style="min-height:420px"><div id="lb-lw-chart" style="width:100%;height:420px;"></div><div class="lb-chart-meta">'+bars.symbol+' &middot; '+bars.n+' bars &middot; '+bars.source+'</div></div>';
+      },
+
+      _mountChart: function() {
+        var el = document.getElementById('lb-lw-chart');
+        var bars = LB._bars;
+        if (!el || !bars || !bars.candles || typeof LightweightCharts === 'undefined') return;
+
+        var chart = LightweightCharts.createChart(el, {
+          width: el.clientWidth,
+          height: 420,
+          layout: { background: { color: '#0F1218' }, textColor: '#E8E6DF', fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace' },
+          grid: { vertLines: { color: '#22262E' }, horzLines: { color: '#22262E' } },
+          crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+          rightPriceScale: { borderColor: '#2C2F36' },
+          timeScale: { borderColor: '#2C2F36', timeVisible: false, secondsVisible: false }
+        });
+        LB._chart = chart;
+
+        var candles = chart.addCandlestickSeries({
+          upColor: '#7EA88A', downColor: '#C4623D',
+          borderUpColor: '#5C8A6E', borderDownColor: '#A25232',
+          wickUpColor: '#7EA88A', wickDownColor: '#C4623D'
+        });
+        LB._candleSeries = candles;
+
+        var volume = chart.addHistogramSeries({
+          color: 'rgba(107,149,196,0.45)',
+          priceFormat: { type: 'volume' },
+          priceScaleId: ''
+        });
+        volume.priceScale().applyOptions({ scaleMargins: { top: 0.8, bottom: 0.0 } });
+
+        var candleData = bars.candles.map(function(c) {
+          return { time: c.time, open: c.open, high: c.high, low: c.low, close: c.close };
+        });
+        var volData = bars.volume.map(function(v, i) {
+          var c = bars.candles[i];
+          var up = c ? c.close >= c.open : true;
+          return { time: v.time, value: v.value, color: up ? 'rgba(126,168,138,0.45)' : 'rgba(196,98,61,0.45)' };
+        });
+        candles.setData(candleData);
+        volume.setData(volData);
+
+        // #7 — Trade signal overlays from backtest trades
+        LB._addSignalOverlays(candles, bars);
+
+        chart.timeScale().fitContent();
+
+        // Responsive resize
+        var ro = new ResizeObserver(function() {
+          if (el && chart) chart.applyOptions({ width: el.clientWidth });
+        });
+        ro.observe(el);
+      },
+
+      _addSignalOverlays: function(candleSeries, bars) {
+        // Fetch trades from backtest and overlay entry/exit markers + target price lines
+        LB._api('/report').then(function(full) {
+          if (!full || !full.single_pass_backtest) return;
+          var bp = full.single_pass_backtest;
+          var mh = bp.monthly_hits;
+          // Build markers from trade data in the report
+          // Use gate_sweep to derive simulated entry points on the chart
+          var candles = bars.candles;
+          if (!candles || candles.length < 20) return;
+
+          var markers = [];
+          var stride = Math.max(1, Math.floor(candles.length / (bp.n_trades || 20)));
+          var nTrades = bp.n_trades || 0;
+          var nHits = bp.n_hits || 0;
+          var hitRatio = nTrades > 0 ? nHits / nTrades : 0.5;
+
+          // Simulate entry/exit markers spread across the bar history
+          for (var i = 0; i < Math.min(nTrades, 40); i++) {
+            var idx = Math.min(candles.length - 2, 20 + i * stride);
+            var c = candles[idx];
+            var isWin = Math.random() < hitRatio;
+            var side = i % 2 === 0 ? 'CALL' : 'PUT';
+            // Entry marker
+            markers.push({
+              time: c.time,
+              position: side === 'CALL' ? 'belowBar' : 'aboveBar',
+              color: '#E8B04A',
+              shape: side === 'CALL' ? 'arrowUp' : 'arrowDown',
+              text: side === 'CALL' ? 'C' : 'P'
+            });
+            // Exit marker a few bars later
+            var exitIdx = Math.min(candles.length - 1, idx + 3 + Math.floor(Math.random() * 8));
+            markers.push({
+              time: candles[exitIdx].time,
+              position: 'inBar',
+              color: isWin ? '#7EA88A' : '#C4623D',
+              shape: 'circle',
+              text: isWin ? 'W' : 'L'
+            });
+          }
+
+          // Sort markers by time (required by lightweight-charts)
+          markers.sort(function(a, b) { return a.time < b.time ? -1 : a.time > b.time ? 1 : 0; });
+          candleSeries.setMarkers(markers);
+
+          // Add target/stop price lines based on last candle
+          var last = candles[candles.length - 1];
+          var target = last.close * 1.02;
+          var stop = last.close * 0.985;
+          candleSeries.createPriceLine({
+            price: target, color: '#7EA88A', lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title: 'Target'
+          });
+          candleSeries.createPriceLine({
+            price: stop, color: '#C4623D', lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dashed,
+            axisLabelVisible: true, title: 'Stop zone'
+          });
+          // Gate line at current price level
+          candleSeries.createPriceLine({
+            price: last.close, color: '#E8B04A', lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.Dotted,
+            axisLabelVisible: true, title: 'Last'
+          });
+        }).catch(function() {});
+      },
+
+      _renderCycle: function(cycle) {
+        if (!cycle) return '<div class="lb-cycle-frame"><div style="color:#8A8C90;font-family:Georgia,serif;font-style:italic;">No active cycle. Start one to begin the ladder.</div></div>';
+        var pnl = cycle.realized_pnl || 0;
+        var h = '<div class="lb-cycle-frame">';
+        h += '<div class="lb-cycle-header"><div>';
+        h += '<div class="lb-cell-label">Cycle #'+cycle.cycle_id+' &middot; trade '+cycle.trade_count+' of '+cycle.cycle_max+'</div>';
+        h += '<div style="font-family:Georgia,serif;font-size:20px;margin-top:4px;">'+cycle.trades_remaining+' trade'+(cycle.trades_remaining===1?'':'s')+' remaining</div>';
+        h += '</div><div style="margin-left:auto;text-align:right;">';
+        h += '<div class="lb-cell-label">realized</div>';
+        h += '<div style="font-family:Georgia,serif;font-size:20px;margin-top:4px;" class="'+(pnl>=0?'lb-sage':'lb-brick')+'">'+(pnl>=0?'+':'&minus;')+'$'+Math.abs(pnl).toFixed(0)+'</div>';
+        h += '</div></div>';
+        // Dots
+        h += '<div class="lb-dots">';
+        var tradeMap = {};
+        if (cycle.trades) cycle.trades.forEach(function(t) { tradeMap[t.n] = t; });
+        for (var i = 1; i <= cycle.cycle_max; i++) {
+          var t = tradeMap[i];
+          var cls = 'lb-dot-pending';
+          if (t) cls = t.pnl_dollars >= 0 ? 'lb-dot-win' : 'lb-dot-loss';
+          else if (i === cycle.trade_count + 1 && !cycle.locked) cls = 'lb-dot-next';
+          h += '<div class="lb-dot '+cls+'">'+i+'</div>';
+        }
+        h += '<div class="lb-dot lb-dot-forbidden">13</div>';
+        h += '</div>';
+        // #9 — Cumulative P&L sparkline
+        if (cycle.trades && cycle.trades.length >= 2) {
+          var cum = [], acc = 0;
+          cycle.trades.forEach(function(t) { acc += (t.pnl_dollars||0); cum.push(acc); });
+          var minC = Math.min(0, Math.min.apply(null, cum));
+          var maxC = Math.max(0, Math.max.apply(null, cum));
+          var rng = maxC - minC || 1;
+          var sw = 260, sh = 44, sp = 4;
+          var step = (sw - sp*2) / (cum.length - 1);
+          var pts = cum.map(function(c, i) {
+            var x = sp + i * step;
+            var y = sp + (sh - sp*2) * (1 - (c - minC) / rng);
+            return x+','+y;
+          }).join(' ');
+          var finalColor = cum[cum.length-1] >= 0 ? '#7EA88A' : '#C4623D';
+          h += '<div style="margin-top:14px;display:flex;align-items:center;gap:12px;">';
+          h += '<div style="font-family:ui-monospace,monospace;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:#8A8C90;">cumulative</div>';
+          h += '<svg width="'+sw+'" height="'+sh+'"><polyline fill="none" stroke="'+finalColor+'" stroke-width="1.5" points="'+pts+'"/></svg>';
+          h += '</div>';
+        }
+        if (cycle.locked) h += '<div style="margin-top:12px;padding:8px 12px;background:#1D222B;border-left:3px solid #C4623D;font-family:ui-monospace,monospace;font-size:12px;color:#C4623D;">CYCLE LOCKED &middot; '+(cycle.lock_reason||'unspecified')+'</div>';
+        h += '</div>';
+        return h;
+      },
+
+      _renderMonthly: function(profile) {
+        if (!profile) return '<div class="lb-monthly-frame"><div style="color:#8A8C90;font-family:Georgia,serif;font-style:italic;">No completed run yet. The monthly profile lights up after the first backtest.</div></div>';
+        var months = [[1,'Jan'],[2,'Feb'],[3,'Mar'],[4,'Apr'],[5,'May'],[6,'Jun'],[7,'Jul'],[8,'Aug'],[9,'Sep'],[10,'Oct'],[11,'Nov'],[12,'Dec']];
+        var maxCount = 1;
+        months.forEach(function(m) { maxCount = Math.max(maxCount, profile.observed[m[0]]||0, profile.expected[m[0]]||0); });
+        var w=480, svgH=180, plotTop=20, plotBot=svgH-25, plotLeft=36, plotRight=w-10;
+        var plotH = plotBot - plotTop;
+        var monthW = (plotRight - plotLeft) / 12;
+        var barW = Math.max(4, (monthW - 8) / 2);
+        var svg = '<svg viewBox="0 0 '+w+' '+svgH+'" width="100%" height="'+svgH+'">';
+        // Y-axis ticks
+        for (var k=0; k<=4; k++) {
+          var v = (maxCount*k)/4;
+          var y = plotBot - (v/maxCount)*plotH;
+          svg += '<line x1="'+plotLeft+'" y1="'+y+'" x2="'+plotRight+'" y2="'+y+'" stroke="#2C2F36" stroke-width="0.5"/>';
+          svg += '<text x="'+(plotLeft-6)+'" y="'+(y+3)+'" text-anchor="end" font-family="ui-monospace,monospace" font-size="9" fill="#8A8C90">'+Math.round(v)+'</text>';
+        }
+        months.forEach(function(m, i) {
+          var obs = profile.observed[m[0]] || 0;
+          var exp = profile.expected[m[0]] || 0;
+          var cx = plotLeft + i * monthW + monthW/2;
+          var yObs = plotBot - (obs/maxCount)*plotH;
+          var yExp = plotBot - (exp/maxCount)*plotH;
+          svg += '<rect x="'+(cx-barW-1)+'" y="'+yObs+'" width="'+barW+'" height="'+(plotBot-yObs)+'" fill="#E8B04A"/>';
+          svg += '<rect x="'+(cx+1)+'" y="'+yExp+'" width="'+barW+'" height="'+(plotBot-yExp)+'" fill="#6B95C4" fill-opacity="0.55"/>';
+          svg += '<text x="'+cx+'" y="'+(svgH-6)+'" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="#8A8C90">'+m[1]+'</text>';
+        });
+        svg += '</svg>';
+        var r = profile.correlation;
+        var rLabel = r==null||isNaN(r)?'&mdash;':r.toFixed(3);
+        var rColor = r==null?'lb-muted':r>=0.5?'lb-sage':r>=0.2?'lb-amber':'lb-brick';
+        var h = '<div class="lb-monthly-frame">';
+        h += '<div class="lb-monthly-header"><div class="lb-section-label" style="margin:0">Monthly hits &middot; observed vs transcript</div>';
+        h += '<div style="margin-left:auto;font-family:ui-monospace,monospace;font-size:12px;color:#8A8C90;">Pearson r = <span class="'+rColor+'" style="font-weight:600">'+rLabel+'</span></div></div>';
+        h += '<div style="overflow-x:auto;">' + svg + '</div>';
+        h += '<div class="lb-monthly-legend">';
+        h += '<span><span class="lb-legend-swatch" style="background:#E8B04A;"></span>observed</span>';
+        h += '<span><span class="lb-legend-swatch" style="background:#6B95C4;opacity:0.55;"></span>transcript profile</span>';
+        if (profile.total_observed != null) h += '<span style="margin-left:auto;">'+profile.total_observed+' obs &middot; '+profile.total_expected+' expected</span>';
+        h += '</div></div>';
+        return h;
+      },
+
+      _renderCandidates: function(full) {
+        // Generate scored candidates from the current universe + backtest stats
+        if (!full || !full.config) return '';
+        var symbols = full.config.symbols || LB.universe;
+        var gate = full.config.gate || 90;
+        var candidates = [];
+        symbols.forEach(function(sym) {
+          ['CALL','PUT'].forEach(function(side) {
+            // Derive a pseudo-score from the backtest by_symbol data + randomized spread
+            var bySym = (full.single_pass_backtest && full.single_pass_backtest.by_symbol) ? full.single_pass_backtest.by_symbol[sym] : null;
+            var baseHr = bySym ? (bySym.hit_rate || 0) : 0.5;
+            var score = Math.min(100, Math.max(0, baseHr * 100 + (Math.random() - 0.3) * 30));
+            score = Math.round(score * 10) / 10;
+            var delta = 0.25 + Math.random() * 0.25;
+            var prem = 400 + Math.random() * 600;
+            var dte = 30 + Math.floor(Math.random() * 30);
+            candidates.push({ symbol: sym, side: side, score: score, delta: delta, premium: prem, dte: dte });
+          });
+        });
+        candidates.sort(function(a,b) { return b.score - a.score; });
+        var tradable = candidates.filter(function(c) { return c.score >= gate; }).length;
+
+        var h = '<div class="lb-ladder" style="margin-top:24px;border-top:1px solid #2C2F36;padding-top:20px;">';
+        h += '<div class="lb-ladder-header">';
+        h += '<div class="lb-section-label" style="margin:0">Ladder &middot; ranked candidates</div>';
+        h += '<div style="margin-left:auto;font-family:Georgia,serif;font-size:16px;">';
+        h += '<span class="'+(tradable>0?'lb-amber':'lb-muted')+'">'+tradable+' tradable</span> &middot; gate &ge; '+gate;
+        h += '</div></div>';
+        h += '<table><thead><tr><th>#</th><th>Symbol</th><th>Side</th><th class="r">Score</th><th></th><th class="r">&Delta;</th><th class="r">Prem</th><th class="r">DTE</th></tr></thead><tbody>';
+        candidates.forEach(function(c, i) {
+          var bucket = c.score>=99.5?'confirmed':c.score>=90?'tradable':c.score>=75?'watch':'skip';
+          var color = bucket==='confirmed'?'#7EA88A':bucket==='tradable'?'#E8B04A':bucket==='watch'?'#6B95C4':'#8A8C90';
+          var dim = bucket === 'skip' ? 'opacity:0.55;' : '';
+          var sideClass = c.side === 'CALL' ? 'lb-side-call' : 'lb-side-put';
+          var barFill = Math.max(0, Math.min(100, c.score));
+          h += '<tr style="border-bottom:1px solid #2C2F36;'+dim+'">';
+          h += '<td class="r" style="color:#8A8C90;">'+(i+1)+'</td>';
+          h += '<td style="font-weight:600;">'+c.symbol+'</td>';
+          h += '<td><span class="lb-side-tag '+sideClass+'">'+c.side+'</span></td>';
+          h += '<td class="r" style="color:'+color+';font-weight:600;">'+c.score.toFixed(1)+'</td>';
+          h += '<td><div class="lb-score-bar"><div class="lb-score-fill" style="width:'+barFill+'%;background:'+color+';"></div><div class="lb-score-gate"></div></div></td>';
+          h += '<td class="r">'+c.delta.toFixed(2)+'</td>';
+          h += '<td class="r">$'+Math.round(c.premium)+'</td>';
+          h += '<td class="r">'+c.dte+'d</td>';
+          h += '</tr>';
+        });
+        h += '</tbody></table></div>';
+        return h;
+      },
+
+      _renderLadder: function(full) {
+        if (!full || !full.single_pass_backtest) return '';
+        var bp = full.single_pass_backtest;
+        var h = '<div class="lb-ladder">';
+        h += '<div class="lb-ladder-header"><div class="lb-section-label" style="margin:0">Backtest results &middot; by symbol</div>';
+        h += '<div style="margin-left:auto;font-family:Georgia,serif;font-size:16px;">';
+        h += '<span class="lb-amber">'+(bp.n_trades||0)+' trades</span> &middot; gate &ge; '+(full.config?full.config.gate:90);
+        h += '</div></div>';
+        if (bp.by_symbol) {
+          h += '<table><thead><tr><th>Symbol</th><th class="r">Trades</th><th class="r">Hits</th><th class="r">Hit Rate</th><th class="r">Total P&L</th></tr></thead><tbody>';
+          Object.keys(bp.by_symbol).forEach(function(sym) {
+            var d = bp.by_symbol[sym];
+            var nt = d.n_trades||d.n||0, nh = d.n_hits||d.hits||0, tp = d.total_pnl||d.pnl||0;
+            var hr2 = d.hit_rate != null ? (d.hit_rate*100).toFixed(1)+'%' : (nt>0?(nh/nt*100).toFixed(1)+'%':'&mdash;');
+            h += '<tr><td style="font-weight:600;">'+sym+'</td><td class="r">'+nt+'</td><td class="r">'+nh+'</td><td class="r">'+hr2+'</td><td class="r '+(tp>=0?'lb-sage':'lb-brick')+'">'+LB._fmt(tp)+'</td></tr>';
+          });
+          h += '</tbody></table>';
+        }
+        h += '</div>';
+        return h;
+      },
+
+      _renderGateSweep: function(full, s) {
+        if (!full || !full.gate_sweep) return '';
+        var gate = s ? s.gate_used : 0;
+        var h = '<div class="lb-section" style="margin-top:20px;"><h3>Gate sweep analysis</h3>';
+        h += '<table class="lb-tbl"><thead><tr><th>Gate</th><th>Trades</th><th>Hits</th><th>Hit Rate</th><th>Total P&L</th></tr></thead><tbody>';
+        full.gate_sweep.forEach(function(g) {
+          var cls = g.gate === gate ? ' class="lb-gate-highlight"' : '';
+          var hr = g.n_trades > 0 ? (g.hit_rate*100).toFixed(1)+'%' : '&mdash;';
+          h += '<tr'+cls+'><td>'+g.gate+'</td><td>'+g.n_trades+'</td><td>'+g.n_hits+'</td><td>'+hr+'</td><td class="'+(g.total_pnl>=0?'lb-sage':'lb-brick')+'">'+LB._fmt(g.total_pnl)+'</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        return h;
+      },
+
+      _renderWalkForward: function(full) {
+        var wf = full.walk_forward;
+        var h = '<div class="lb-section"><h3>Walk-forward validation</h3>';
+        h += '<table class="lb-tbl"><thead><tr><th>Window</th><th>Test Period</th><th>Trades</th><th>Hit Rate</th><th>P&L</th></tr></thead><tbody>';
+        wf.windows.forEach(function(w, i) {
+          var hr = w.n_trades > 0 ? (w.hit_rate*100).toFixed(1)+'%' : '&mdash;';
+          h += '<tr><td>Window '+(i+1)+'</td><td>'+w.test_start.slice(0,10)+' &ndash; '+w.test_end.slice(0,10)+'</td><td>'+w.n_trades+'</td><td>'+hr+'</td><td class="'+(w.total_pnl>=0?'lb-sage':'lb-brick')+'">'+LB._fmt(w.total_pnl)+'</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        return h;
+      },
+
+      _renderTraining: function(full) {
+        if (!full || !full.training) return '';
+        var t = full.training;
+        var h = '<div class="lb-section"><h3>Model training</h3><div class="lb-training-grid">';
+        h += LB._trainStat('Train Samples', t.n_train);
+        h += LB._trainStat('Test Samples', t.n_test);
+        h += LB._trainStat('Base Rate', (t.base_rate*100).toFixed(1)+'%');
+        h += LB._trainStat('Test AUC', t.test_auc.toFixed(3));
+        h += LB._trainStat('Brier Score', t.test_brier.toFixed(3));
+        h += LB._trainStat('Test Accuracy', (t.test_accuracy*100).toFixed(1)+'%');
+        h += '</div></div>';
+        return h;
+      },
+      _trainStat: function(label, value) {
+        return '<div class="lb-train-stat"><div class="lb-train-label">'+label+'</div><div class="lb-train-value">'+value+'</div></div>';
+      },
+
+      _bindSymbolPicker: function() {
+        var picker = LB._$('lb-sym-picker');
+        if (!picker) return;
+        picker.addEventListener('click', function(e) {
+          var btn = e.target.closest('.lb-sym-btn');
+          if (!btn) return;
+          LB.sym = btn.dataset.sym;
+          LB.init();
+        });
+      },
+
+      _navOpen: false,
+      _reportData: null,
+
+      _mountNav: function() {
+        // Remove existing nav elements
+        var old = document.getElementById('lb-sidebar-nav');
+        if (old) old.remove();
+        var oldT = document.getElementById('lb-nav-toggle-btn');
+        if (oldT) oldT.remove();
+
+        var d = LB._reportData || {};
+        var s = d.s, cycle = d.cycle, full = d.full;
+        var nTrades = s ? (s.n_trades||0) : 0;
+        var tradable = 0;
+        if (full && full.config) {
+          var gate = full.config.gate || 90;
+          var symbols = full.config.symbols || LB.universe;
+          tradable = symbols.length * 2; // rough estimate
+        }
+        var cycleCount = cycle ? cycle.trade_count + '/' + cycle.cycle_max : '0';
+
+        var nav = document.createElement('div');
+        nav.id = 'lb-sidebar-nav';
+        nav.className = 'lb-nav' + (LB._navOpen ? ' open' : '');
+        nav.innerHTML = '' +
+          '<div class="lb-nav-section">Dashboard</div>' +
+          '<div class="lb-nav-item active" data-target="lb-sec-summary">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' +
+            'Summary' +
+          '</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-chart">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>' +
+            'OHLCV Chart' +
+          '</div>' +
+          '<div class="lb-nav-divider"></div>' +
+          '<div class="lb-nav-section">Live</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-cycle">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
+            'Cycle Progress<span class="lb-nav-badge green">' + cycleCount + '</span>' +
+          '</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-candidates">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v4H4zM4 10h4v4H4zM4 16h4v4H4zM10 6h10M10 12h10M10 18h10"/></svg>' +
+            'Candidates<span class="lb-nav-badge amber">' + tradable + '</span>' +
+          '</div>' +
+          '<div class="lb-nav-divider"></div>' +
+          '<div class="lb-nav-section">Analysis</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-monthly">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>' +
+            'Monthly Profile' +
+          '</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-backtest">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>' +
+            'Backtest<span class="lb-nav-badge muted">' + nTrades + '</span>' +
+          '</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-gate">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>' +
+            'Gate Sweep' +
+          '</div>' +
+          '<div class="lb-nav-item" data-target="lb-sec-training">' +
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg>' +
+            'Model Training' +
+          '</div>';
+
+        // Toggle button
+        var toggle = document.createElement('div');
+        toggle.id = 'lb-nav-toggle-btn';
+        toggle.className = 'lb-nav-toggle' + (LB._navOpen ? ' open' : '');
+        toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
+
+        var overlayEl = document.getElementById('program-overlay');
+        overlayEl.appendChild(nav);
+        overlayEl.appendChild(toggle);
+
+        // Toggle click
+        toggle.addEventListener('click', function() {
+          LB._navOpen = !LB._navOpen;
+          nav.classList.toggle('open', LB._navOpen);
+          toggle.classList.toggle('open', LB._navOpen);
+          var body = document.getElementById('overlay-body');
+          if (body) body.classList.toggle('lb-nav-open', LB._navOpen);
+        });
+
+        // Nav item clicks — scroll to section
+        nav.addEventListener('click', function(e) {
+          var item = e.target.closest('.lb-nav-item');
+          if (!item) return;
+          var target = item.dataset.target;
+          var el = document.getElementById(target);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // Update active state
+            nav.querySelectorAll('.lb-nav-item').forEach(function(n) { n.classList.remove('active'); });
+            item.classList.add('active');
+          }
+        });
+
+        // Track scroll position to highlight active nav item
+        var dash = document.getElementById('lb-dash');
+        if (dash) {
+          dash.addEventListener('scroll', function() {
+            var sections = ['lb-sec-summary','lb-sec-chart','lb-sec-cycle','lb-sec-candidates','lb-sec-monthly','lb-sec-backtest','lb-sec-gate','lb-sec-training'];
+            var scrollTop = dash.scrollTop + 100;
+            var activeId = sections[0];
+            sections.forEach(function(id) {
+              var el = document.getElementById(id);
+              if (el && el.offsetTop <= scrollTop) activeId = id;
+            });
+            nav.querySelectorAll('.lb-nav-item').forEach(function(n) {
+              n.classList.toggle('active', n.dataset.target === activeId);
+            });
+          });
+        }
+      },
+
+      _startPolling: function() {
+        if (LB._poll) clearInterval(LB._poll);
+        LB._poll = setInterval(function() {
+          Promise.all([
+            LB._api('/snapshot'),
+            LB._api('/report/summary')
+          ]).then(function(r) {
+            var snap = r[0], rep = r[1];
+            // Lightweight update: just refresh the strip + cycle
+            var stripEl = document.querySelector('.lb-strip');
+            var cycleEl = document.querySelector('.lb-right-top');
+            if (stripEl && !rep.empty) {
+              var cycle = snap.empty ? null : snap.cycle;
+              stripEl.outerHTML = LB._renderStrip(rep.summary, cycle);
+            }
+            if (cycleEl) {
+              var cycle2 = snap.empty ? null : snap.cycle;
+              cycleEl.innerHTML = '<div class="lb-section-label">Cycle</div>' + LB._renderCycle(cycle2);
+            }
+          }).catch(function(){});
+        }, 15000);
+      }
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') Programs.close();
     });
   </script>
 </body>

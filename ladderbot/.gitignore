@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Node / frontend
+node_modules/
+ui/dist/
+ui/dist-ladder/
+coverage/
+*.log
+
+# LadderBot runtime state
+ladder.db
+ladder.db-wal
+ladder.db-shm
+
+# IDE
+.vscode/
+.idea/
+.DS_Store

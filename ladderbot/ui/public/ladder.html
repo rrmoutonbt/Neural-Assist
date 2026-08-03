@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark light" />
+  <title>LadderBot — futures options gate ≥ 90</title>
+  <style>
+    /* Reset + ground — LadderDashboard owns its own layout, so the shell
+       here just sets the page background and lets the app render freely. */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      background: #0F1218;
+      color: #E8E6DF;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    @media (prefers-color-scheme: light) {
+      body { background: #F5F1E8; color: #1A1D24; }
+    }
+    /* Bootstrap message while the JS bundle is loading. Replaced when
+       React hydrates <#root>. */
+    #root:empty::before {
+      content: "loading ladder…";
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #8A8C90;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>
