@@ -29,40 +29,46 @@
     /* Program overlay — slide-in full-page launcher */
     .program-overlay-backdrop { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,0); pointer-events: none; transition: background 0.35s ease; }
     .program-overlay-backdrop.active { background: rgba(0,0,0,0.6); pointer-events: auto; }
-    .program-overlay { position: fixed; top: 0; right: 0; width: 100vw; height: 100vh; z-index: 10000; background: var(--color-bg, #0a0e14); display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: -8px 0 40px rgba(0,0,0,0.5); }
+    .program-overlay { position: fixed; top: 0; right: 0; width: 100vw; height: 100vh; z-index: 10000; background: #0a0e14; display: flex; flex-direction: column; transform: translateX(100%); transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1); box-shadow: -8px 0 40px rgba(0,0,0,0.5); }
     .program-overlay.active { transform: translateX(0); }
-    .program-overlay-bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--color-bg-card, #111720); border-bottom: 1px solid var(--color-border, #1e2a3a); flex-shrink: 0; }
-    .program-overlay-back { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 6px; background: rgba(255,255,255,0.06); color: var(--color-text-muted, #8A8C90); border: 1px solid var(--color-border, #2C2F36); cursor: pointer; font-weight: 500; font-size: 0.8rem; font-family: 'Inter', sans-serif; transition: all 0.15s; }
-    .program-overlay-back:hover { background: rgba(255,255,255,0.1); color: var(--color-text, #e8e6df); border-color: var(--color-gold, #E8B04A); }
-    .program-overlay-back svg { width: 14px; height: 14px; }
-    .program-overlay-title { font-weight: 600; font-size: 0.95rem; color: var(--color-text, #e8e6df); flex: 1; }
-    .program-overlay-status { display: flex; align-items: center; gap: 8px; }
-    .program-overlay-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; animation: lbPulse 1.5s ease-in-out infinite; }
-    @keyframes lbPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
-    .program-overlay-status-text { font-family: ui-monospace, monospace; font-size: 0.7rem; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px; }
-    .program-overlay-close { padding: 6px 16px; border-radius: 6px; background: rgba(239,68,68,0.15); color: #ef5350; border: 1px solid rgba(239,68,68,0.3); cursor: pointer; font-weight: 600; font-size: 0.8rem; font-family: 'Inter', sans-serif; transition: all 0.15s; }
-    .program-overlay-close:hover { background: rgba(239,68,68,0.25); }
     .program-overlay iframe { flex: 1; width: 100%; border: none; }
-    /* LadderBot slide nav sidebar */
-    .lb-nav-toggle { position: fixed; top: 56px; left: 0; z-index: 10002; width: 28px; height: 72px; background: #171B22; border: 1px solid #2C2F36; border-left: none; border-radius: 0 8px 8px 0; display: flex; align-items: center; justify-content: center; cursor: pointer; color: #8A8C90; transition: all 0.2s; }
-    .lb-nav-toggle:hover { background: #1D222B; color: #E8B04A; border-color: #E8B04A; }
-    .lb-nav-toggle svg { width: 16px; height: 16px; transition: transform 0.3s; }
-    .lb-nav-toggle.open svg { transform: rotate(180deg); }
-    .lb-nav { position: fixed; top: 48px; left: 0; bottom: 0; width: 220px; background: #12151C; border-right: 1px solid #2C2F36; z-index: 10001; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1); overflow-y: auto; padding-top: 12px; }
-    .lb-nav.open { transform: translateX(0); }
-    .lb-nav-section { padding: 12px 16px 4px; font-family: ui-monospace, monospace; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: #6B6E75; }
-    .lb-nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; color: #B8B5A9; font-size: 0.8rem; font-family: system-ui, sans-serif; cursor: pointer; transition: all 0.15s; border-left: 3px solid transparent; }
-    .lb-nav-item:hover { background: rgba(255,255,255,0.03); color: #E8E6DF; }
-    .lb-nav-item.active { color: #E8B04A; border-left-color: #E8B04A; background: rgba(232,176,74,0.06); }
-    .lb-nav-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.6; }
-    .lb-nav-item:hover svg, .lb-nav-item.active svg { opacity: 1; }
-    .lb-nav-divider { height: 1px; background: #2C2F36; margin: 8px 16px; }
-    .lb-nav-badge { margin-left: auto; padding: 1px 7px; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 10px; font-weight: 600; }
-    .lb-nav-badge.green { background: rgba(126,168,138,0.15); color: #7EA88A; }
-    .lb-nav-badge.amber { background: rgba(232,176,74,0.15); color: #E8B04A; }
-    .lb-nav-badge.muted { background: rgba(138,140,144,0.15); color: #8A8C90; }
-    /* Shift dashboard content when nav open */
-    .lb-nav-open .lb { margin-left: 220px; transition: margin-left 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+    /* Top bar — row 1: back + title + symbols + status + close */
+    .lb-topbar { display: flex; flex-direction: column; flex-shrink: 0; background: #111720; border-bottom: 1px solid #2C2F36; }
+    .lb-topbar-row1 { display: flex; align-items: center; gap: 10px; padding: 8px 16px; }
+    .lb-topbar-back { display: flex; align-items: center; gap: 5px; padding: 5px 12px; border-radius: 6px; background: rgba(255,255,255,0.05); color: #8A8C90; border: 1px solid #2C2F36; cursor: pointer; font-size: 0.78rem; font-family: 'Inter', sans-serif; transition: all 0.15s; flex-shrink: 0; }
+    .lb-topbar-back:hover { background: rgba(255,255,255,0.1); color: #E8E6DF; border-color: #E8B04A; }
+    .lb-topbar-back svg { width: 13px; height: 13px; }
+    .lb-topbar-title { font-weight: 600; font-size: 0.9rem; color: #E8E6DF; white-space: nowrap; }
+    .lb-topbar-sep { width: 1px; height: 20px; background: #2C2F36; flex-shrink: 0; }
+    .lb-topbar-symbols { display: flex; gap: 2px; flex-shrink: 0; }
+    .lb-topbar-symbols .lb-sym-btn { padding: 4px 9px; font-size: 11px; border-radius: 4px; }
+    .lb-topbar-status { display: flex; align-items: center; gap: 6px; margin-left: auto; flex-shrink: 0; }
+    .lb-topbar-dot { width: 7px; height: 7px; border-radius: 50%; background: #10b981; animation: lbPulse 1.5s ease-in-out infinite; }
+    @keyframes lbPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    .lb-topbar-status-text { font-family: ui-monospace, monospace; font-size: 0.65rem; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px; }
+    .lb-topbar-close { padding: 5px 12px; border-radius: 6px; background: rgba(239,68,68,0.12); color: #ef5350; border: 1px solid rgba(239,68,68,0.25); cursor: pointer; font-weight: 600; font-size: 0.75rem; font-family: 'Inter', sans-serif; transition: all 0.15s; flex-shrink: 0; }
+    .lb-topbar-close:hover { background: rgba(239,68,68,0.22); }
+    /* Top bar — row 2: section tabs */
+    .lb-topbar-tabs { display: flex; gap: 0; padding: 0 16px; overflow-x: auto; scrollbar-width: none; }
+    .lb-topbar-tabs::-webkit-scrollbar { display: none; }
+    .lb-tab { padding: 8px 14px; font-family: ui-monospace, monospace; font-size: 11px; letter-spacing: 0.06em; color: #8A8C90; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+    .lb-tab:hover { color: #B8B5A9; background: rgba(255,255,255,0.02); }
+    .lb-tab.active { color: #E8B04A; border-bottom-color: #E8B04A; }
+    .lb-tab-badge { padding: 0 6px; border-radius: 6px; font-size: 9px; font-weight: 700; line-height: 16px; }
+    .lb-tab-badge.green { background: rgba(126,168,138,0.15); color: #7EA88A; }
+    .lb-tab-badge.amber { background: rgba(232,176,74,0.15); color: #E8B04A; }
+    .lb-tab-badge.muted { background: rgba(138,140,144,0.15); color: #8A8C90; }
+    /* Sticky section headers */
+    .lb-sticky-label { position: sticky; top: 0; z-index: 5; background: rgba(15,18,24,0.92); backdrop-filter: blur(8px); padding: 10px 0 6px; margin-bottom: 8px; font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: #8A8C90; border-bottom: 1px solid #2C2F36; }
+    /* Keyboard shortcut hints */
+    .lb-tab-key { display: inline-block; width: 16px; height: 16px; line-height: 16px; text-align: center; border-radius: 3px; background: rgba(255,255,255,0.06); color: #6B6E75; font-size: 9px; font-weight: 600; margin-right: 2px; }
+    @media (max-width: 900px) {
+      .lb-topbar-row1 { flex-wrap: wrap; }
+      .lb-topbar-symbols { order: 10; width: 100%; padding-top: 4px; overflow-x: auto; }
+      .lb-topbar-tabs { padding: 0 8px; }
+      .lb-tab { padding: 7px 10px; font-size: 10px; }
+      .lb-tab-key { display: none; }
+    }
     /* LadderBot inline dashboard — mirrors React component design */
     .lb { font-family: system-ui, -apple-system, sans-serif; color: #E8E6DF; }
     .lb-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -616,21 +622,7 @@
   <!-- Program overlay — slide-in full-page launcher -->
   <div class="program-overlay-backdrop" id="program-backdrop" onclick="Programs.close()"></div>
   <div class="program-overlay" id="program-overlay">
-    <div class="program-overlay-bar">
-      <button class="program-overlay-back" onclick="Programs.close()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        Programs
-      </button>
-      <span class="program-overlay-title" id="overlay-title"></span>
-      <div class="program-overlay-status" id="overlay-status" style="display:none;">
-        <span class="program-overlay-dot"></span>
-        <span class="program-overlay-status-text">Live</span>
-      </div>
-      <button class="program-overlay-close" onclick="Programs.close()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        Close
-      </button>
-    </div>
+    <div id="overlay-topbar"></div>
     <div id="overlay-body"></div>
   </div>
 
@@ -683,23 +675,23 @@
         }
         var overlay = document.getElementById('program-overlay');
         var backdrop = document.getElementById('program-backdrop');
+        var topbar = document.getElementById('overlay-topbar');
         var body = document.getElementById('overlay-body');
-        var status = document.getElementById('overlay-status');
-        document.getElementById('overlay-title').textContent = title;
-        status.style.display = 'none';
 
         if (isLadderBot) {
-          body.innerHTML = '<div class="lb" id="lb-dash" style="flex:1;overflow-y:auto;padding:36px 40px;background:#0F1218;min-height:100vh;"><div class="lb-loading">loading ladderbot...</div></div>';
-          status.style.display = 'flex';
+          topbar.innerHTML = LB._buildTopbar(title);
+          body.innerHTML = '<div class="lb" id="lb-dash" style="flex:1;overflow-y:auto;padding:28px 36px;background:#0F1218;"><div class="lb-loading">loading ladderbot...</div></div>';
         } else {
+          topbar.innerHTML = '<div class="lb-topbar"><div class="lb-topbar-row1">' +
+            '<button class="lb-topbar-back" onclick="Programs.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Programs</button>' +
+            '<span class="lb-topbar-title">' + title + '</span>' +
+            '<button class="lb-topbar-close" onclick="Programs.close()">Close</button>' +
+            '</div></div>';
           body.innerHTML = '<iframe src="' + url + '" title="' + title + '"></iframe>';
         }
 
-        // Slide in
         backdrop.classList.add('active');
-        requestAnimationFrame(function() {
-          overlay.classList.add('active');
-        });
+        requestAnimationFrame(function() { overlay.classList.add('active'); });
 
         if (isLadderBot) {
           setTimeout(function() { LB.init(); }, 100);
@@ -710,15 +702,14 @@
         var backdrop = document.getElementById('program-backdrop');
         overlay.classList.remove('active');
         backdrop.classList.remove('active');
-        // Clean up after slide-out animation completes
         setTimeout(function() {
+          document.getElementById('overlay-topbar').innerHTML = '';
           document.getElementById('overlay-body').innerHTML = '';
-          var sn = document.getElementById('lb-sidebar-nav'); if (sn) sn.remove();
-          var st = document.getElementById('lb-nav-toggle-btn'); if (st) st.remove();
         }, 450);
-        LB._navOpen = false;
         if (LB._poll) { clearInterval(LB._poll); LB._poll = null; }
         if (LB._chart) { try { LB._chart.remove(); } catch(e){} LB._chart = null; LB._candleSeries = null; }
+        if (LB._keyHandler) { document.removeEventListener('keydown', LB._keyHandler); LB._keyHandler = null; }
+        LB._scrollSpy = null;
       }
     };
 
@@ -747,10 +738,12 @@
           var cycle = snap.empty ? null : snap.cycle;
           var profile = mp.empty ? null : mp.profile;
           LB._reportData = { s: s, full: full, cycle: cycle };
+          // Rebuild topbar with fresh data
+          var topbar = document.getElementById('overlay-topbar');
+          if (topbar) topbar.innerHTML = LB._buildTopbar('LadderBot');
           dash.innerHTML = LB._renderAll(s, full, cycle, profile, bars);
           LB._mountChart();
           LB._mountNav();
-          LB._bindSymbolPicker();
           LB._startPolling();
         }).catch(function(e) {
           dash.innerHTML='<div class="lb-loading">Failed to connect: ' + e.message + '</div>';
@@ -759,37 +752,25 @@
 
       _renderAll: function(s, full, cycle, profile, bars) {
         var h = '';
-        h += LB._renderHeader();
-        h += '<div id="lb-sec-summary">' + LB._renderStrip(s, cycle) + '</div>';
-        h += '<div id="lb-sec-chart" class="lb-grid">';
+        h += '<div id="lb-sec-summary"><div class="lb-sticky-label">Summary</div>' + LB._renderStrip(s, cycle) + '</div>';
+        h += '<div id="lb-sec-chart"><div class="lb-sticky-label">OHLCV &middot; ' + LB.sym + '</div><div class="lb-grid">';
         h += '<div class="lb-chart-pane">';
-        h += '<div class="lb-section-label">OHLCV &middot; ' + LB.sym + '</div>';
         h += LB._renderChart(bars);
         h += '</div>';
         h += '<div class="lb-right-pane">';
-        h += '<div class="lb-right-top" id="lb-sec-cycle"><div class="lb-section-label">Cycle</div>' + LB._renderCycle(cycle) + '</div>';
-        h += '<div class="lb-right-bottom" id="lb-sec-monthly"><div class="lb-section-label">Monthly profile</div>' + LB._renderMonthly(profile) + '</div>';
-        h += '</div></div>';
-        h += '<div id="lb-sec-candidates">' + LB._renderCandidates(full) + '</div>';
-        h += '<div id="lb-sec-backtest">' + LB._renderLadder(full) + '</div>';
-        h += '<div id="lb-sec-gate">' + LB._renderGateSweep(full, s) + '</div>';
+        h += '<div class="lb-right-top" id="lb-sec-cycle"><div class="lb-sticky-label">Cycle</div>' + LB._renderCycle(cycle) + '</div>';
+        h += '<div class="lb-right-bottom" id="lb-sec-monthly"><div class="lb-sticky-label">Monthly Profile</div>' + LB._renderMonthly(profile) + '</div>';
+        h += '</div></div></div>';
+        h += '<div id="lb-sec-candidates"><div class="lb-sticky-label">Ladder &middot; Ranked Candidates</div>' + LB._renderCandidates(full) + '</div>';
+        h += '<div id="lb-sec-backtest"><div class="lb-sticky-label">Backtest Results</div>' + LB._renderLadder(full) + '</div>';
+        h += '<div id="lb-sec-gate"><div class="lb-sticky-label">Gate Sweep Analysis</div>' + LB._renderGateSweep(full, s) + '</div>';
         if (full && full.walk_forward && full.walk_forward.windows.length > 0)
-          h += '<div id="lb-sec-walkfwd">' + LB._renderWalkForward(full) + '</div>';
-        h += '<div id="lb-sec-training">' + LB._renderTraining(full) + '</div>';
+          h += '<div id="lb-sec-walkfwd"><div class="lb-sticky-label">Walk-Forward Validation</div>' + LB._renderWalkForward(full) + '</div>';
+        h += '<div id="lb-sec-training"><div class="lb-sticky-label">Model Training</div>' + LB._renderTraining(full) + '</div>';
         return h;
       },
 
-      _renderHeader: function() {
-        var h = '<div class="lb-header">';
-        h += '<div><div class="lb-header-brand">LadderBot &middot; v1</div>';
-        h += '<div class="lb-header-title">The ladder &middot; gate &ge; 90 &middot; 12-trade cycle &middot; fixed target &middot; no stop</div></div>';
-        h += '<div class="lb-symbols" id="lb-sym-picker">';
-        LB.universe.forEach(function(s) {
-          h += '<button class="lb-sym-btn' + (s===LB.sym?' active':'') + '" data-sym="' + s + '">' + s + '</button>';
-        });
-        h += '</div></div>';
-        return h;
-      },
+      /* header moved to top bar */
 
       _renderStrip: function(s, cycle) {
         if (!s) return '';
@@ -1152,129 +1133,121 @@
         return '<div class="lb-train-stat"><div class="lb-train-label">'+label+'</div><div class="lb-train-value">'+value+'</div></div>';
       },
 
-      _bindSymbolPicker: function() {
-        var picker = LB._$('lb-sym-picker');
-        if (!picker) return;
-        picker.addEventListener('click', function(e) {
-          var btn = e.target.closest('.lb-sym-btn');
-          if (!btn) return;
-          LB.sym = btn.dataset.sym;
-          LB.init();
+      /* symbol picker moved to top bar, bound in _mountNav */
+
+      _reportData: null,
+      _scrollSpy: null,
+      _tabs: [
+        { id: 'lb-sec-summary',    label: 'Summary',  key: '1' },
+        { id: 'lb-sec-chart',      label: 'Chart',    key: '2' },
+        { id: 'lb-sec-cycle',      label: 'Cycle',    key: '3', badgeClass: 'green' },
+        { id: 'lb-sec-candidates', label: 'Ladder',   key: '4', badgeClass: 'amber' },
+        { id: 'lb-sec-monthly',    label: 'Profile',  key: '5' },
+        { id: 'lb-sec-backtest',   label: 'Backtest', key: '6', badgeClass: 'muted' },
+        { id: 'lb-sec-gate',       label: 'Gates',    key: '7' },
+        { id: 'lb-sec-training',   label: 'Model',    key: '8' }
+      ],
+
+      _buildTopbar: function(title) {
+        var d = LB._reportData || {};
+        var cycle = d.cycle, s = d.s;
+        var h = '<div class="lb-topbar">';
+        // Row 1: back, title, symbols, status, close
+        h += '<div class="lb-topbar-row1">';
+        h += '<button class="lb-topbar-back" onclick="Programs.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Programs</button>';
+        h += '<span class="lb-topbar-title">' + title + '</span>';
+        h += '<div class="lb-topbar-sep"></div>';
+        // Symbol picker inline
+        h += '<div class="lb-topbar-symbols" id="lb-top-sym">';
+        LB.universe.forEach(function(s) {
+          h += '<button class="lb-sym-btn' + (s===LB.sym?' active':'') + '" data-sym="' + s + '">' + s + '</button>';
         });
+        h += '</div>';
+        h += '<div class="lb-topbar-status"><span class="lb-topbar-dot"></span><span class="lb-topbar-status-text">Live</span></div>';
+        h += '<button class="lb-topbar-close" onclick="Programs.close()">Close</button>';
+        h += '</div>';
+        // Row 2: section tabs
+        h += '<div class="lb-topbar-tabs" id="lb-tabs">';
+        LB._tabs.forEach(function(t) {
+          var badge = '';
+          if (t.badgeClass) {
+            var val = '';
+            if (t.id === 'lb-sec-cycle') val = cycle ? cycle.trade_count+'/'+cycle.cycle_max : '0';
+            else if (t.id === 'lb-sec-backtest') val = s ? (s.n_trades||0) : 0;
+            else if (t.id === 'lb-sec-candidates') val = (LB.universe.length * 2);
+            if (val !== '') badge = '<span class="lb-tab-badge '+t.badgeClass+'">'+val+'</span>';
+          }
+          h += '<div class="lb-tab'+(t.id==='lb-sec-summary'?' active':'')+'" data-target="'+t.id+'">';
+          h += '<span class="lb-tab-key">'+t.key+'</span>'+t.label+badge+'</div>';
+        });
+        h += '</div>';
+        h += '</div>';
+        return h;
       },
 
-      _navOpen: false,
-      _reportData: null,
-
       _mountNav: function() {
-        // Remove existing nav elements
-        var old = document.getElementById('lb-sidebar-nav');
-        if (old) old.remove();
-        var oldT = document.getElementById('lb-nav-toggle-btn');
-        if (oldT) oldT.remove();
-
-        var d = LB._reportData || {};
-        var s = d.s, cycle = d.cycle, full = d.full;
-        var nTrades = s ? (s.n_trades||0) : 0;
-        var tradable = 0;
-        if (full && full.config) {
-          var gate = full.config.gate || 90;
-          var symbols = full.config.symbols || LB.universe;
-          tradable = symbols.length * 2; // rough estimate
-        }
-        var cycleCount = cycle ? cycle.trade_count + '/' + cycle.cycle_max : '0';
-
-        var nav = document.createElement('div');
-        nav.id = 'lb-sidebar-nav';
-        nav.className = 'lb-nav' + (LB._navOpen ? ' open' : '');
-        nav.innerHTML = '' +
-          '<div class="lb-nav-section">Dashboard</div>' +
-          '<div class="lb-nav-item active" data-target="lb-sec-summary">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>' +
-            'Summary' +
-          '</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-chart">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 9l-5 5-4-4-3 3"/></svg>' +
-            'OHLCV Chart' +
-          '</div>' +
-          '<div class="lb-nav-divider"></div>' +
-          '<div class="lb-nav-section">Live</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-cycle">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>' +
-            'Cycle Progress<span class="lb-nav-badge green">' + cycleCount + '</span>' +
-          '</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-candidates">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h4v4H4zM4 10h4v4H4zM4 16h4v4H4zM10 6h10M10 12h10M10 18h10"/></svg>' +
-            'Candidates<span class="lb-nav-badge amber">' + tradable + '</span>' +
-          '</div>' +
-          '<div class="lb-nav-divider"></div>' +
-          '<div class="lb-nav-section">Analysis</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-monthly">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>' +
-            'Monthly Profile' +
-          '</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-backtest">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>' +
-            'Backtest<span class="lb-nav-badge muted">' + nTrades + '</span>' +
-          '</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-gate">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>' +
-            'Gate Sweep' +
-          '</div>' +
-          '<div class="lb-nav-item" data-target="lb-sec-training">' +
-            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 014 4c0 1.1-.9 2-2 2h-4a2 2 0 01-2-2 4 4 0 014-4z"/><path d="M8 8v6a4 4 0 008 0V8"/><path d="M12 18v4M8 22h8"/></svg>' +
-            'Model Training' +
-          '</div>';
-
-        // Toggle button
-        var toggle = document.createElement('div');
-        toggle.id = 'lb-nav-toggle-btn';
-        toggle.className = 'lb-nav-toggle' + (LB._navOpen ? ' open' : '');
-        toggle.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>';
-
-        var overlayEl = document.getElementById('program-overlay');
-        overlayEl.appendChild(nav);
-        overlayEl.appendChild(toggle);
-
-        // Toggle click
-        toggle.addEventListener('click', function() {
-          LB._navOpen = !LB._navOpen;
-          nav.classList.toggle('open', LB._navOpen);
-          toggle.classList.toggle('open', LB._navOpen);
-          var body = document.getElementById('overlay-body');
-          if (body) body.classList.toggle('lb-nav-open', LB._navOpen);
-        });
-
-        // Nav item clicks — scroll to section
-        nav.addEventListener('click', function(e) {
-          var item = e.target.closest('.lb-nav-item');
-          if (!item) return;
-          var target = item.dataset.target;
-          var el = document.getElementById(target);
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            // Update active state
-            nav.querySelectorAll('.lb-nav-item').forEach(function(n) { n.classList.remove('active'); });
-            item.classList.add('active');
-          }
-        });
-
-        // Track scroll position to highlight active nav item
-        var dash = document.getElementById('lb-dash');
-        if (dash) {
-          dash.addEventListener('scroll', function() {
-            var sections = ['lb-sec-summary','lb-sec-chart','lb-sec-cycle','lb-sec-candidates','lb-sec-monthly','lb-sec-backtest','lb-sec-gate','lb-sec-training'];
-            var scrollTop = dash.scrollTop + 100;
-            var activeId = sections[0];
-            sections.forEach(function(id) {
-              var el = document.getElementById(id);
-              if (el && el.offsetTop <= scrollTop) activeId = id;
-            });
-            nav.querySelectorAll('.lb-nav-item').forEach(function(n) {
-              n.classList.toggle('active', n.dataset.target === activeId);
-            });
+        // Bind tab clicks
+        var tabsEl = document.getElementById('lb-tabs');
+        if (tabsEl) {
+          tabsEl.addEventListener('click', function(e) {
+            var tab = e.target.closest('.lb-tab');
+            if (!tab) return;
+            LB._scrollTo(tab.dataset.target);
           });
         }
+        // Bind top-bar symbol picker
+        var topSym = document.getElementById('lb-top-sym');
+        if (topSym) {
+          topSym.addEventListener('click', function(e) {
+            var btn = e.target.closest('.lb-sym-btn');
+            if (!btn) return;
+            LB.sym = btn.dataset.sym;
+            LB.init();
+          });
+        }
+        // Scroll spy — track active section
+        var dash = document.getElementById('lb-dash');
+        if (dash) {
+          var spy = function() {
+            var ids = LB._tabs.map(function(t) { return t.id; });
+            var active = ids[0];
+            var scrollTop = dash.scrollTop + 80;
+            ids.forEach(function(id) {
+              var el = document.getElementById(id);
+              if (el) {
+                var top = el.offsetTop - dash.offsetTop;
+                if (top <= scrollTop) active = id;
+              }
+            });
+            var tabs = document.querySelectorAll('#lb-tabs .lb-tab');
+            tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.target === active); });
+          };
+          dash.addEventListener('scroll', spy, { passive: true });
+          LB._scrollSpy = spy;
+        }
+        // Keyboard shortcuts: 1-8 jump to sections
+        LB._keyHandler = function(e) {
+          if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+          var overlay = document.getElementById('program-overlay');
+          if (!overlay || !overlay.classList.contains('active')) return;
+          var idx = parseInt(e.key) - 1;
+          if (idx >= 0 && idx < LB._tabs.length) {
+            e.preventDefault();
+            LB._scrollTo(LB._tabs[idx].id);
+          }
+        };
+        document.addEventListener('keydown', LB._keyHandler);
+      },
+
+      _scrollTo: function(targetId) {
+        var dash = document.getElementById('lb-dash');
+        var el = document.getElementById(targetId);
+        if (!dash || !el) return;
+        var top = el.offsetTop - dash.offsetTop;
+        dash.scrollTo({ top: top, behavior: 'smooth' });
+        // Update tabs immediately
+        var tabs = document.querySelectorAll('#lb-tabs .lb-tab');
+        tabs.forEach(function(t) { t.classList.toggle('active', t.dataset.target === targetId); });
       },
 
       _startPolling: function() {
