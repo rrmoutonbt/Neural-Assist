@@ -1,0 +1,13 @@
+# Neural Assistant - Local LLM Dependencies
+# Install with: pip install -r requirements-local.txt
+
+# GGUF model inference (CPU + GPU, no external server)
+llama-cpp-python>=0.3,<1.0
+
+# HuggingFace model downloads and caching
+huggingface-hub>=0.20,<1.0
+
+# Optional: HuggingFace Transformers backend (GPU recommended)
+# torch>=2.1,<3.0
+# transformers>=4.36,<5.0
+# accelerate>=0.25,<1.0

@@ -1,0 +1,76 @@
+api:
+  host: localhost
+  port: 8000
+  prefix: /api/v1
+cognitive:
+  analysis_timeout: 10.0
+  context_awareness: true
+  learning_rate: 0.001
+  memory_capacity: 10000
+  memory_consolidation: true
+  parallel_processing: true
+  reasoning_depth: 5
+database:
+  pool_size: 10
+  url: sqlite:///neural_assistant.db
+debug: true
+environment: development
+log_level: DEBUG
+logging:
+  file: neural_assistant.log
+  retention: 30
+  rotation: daily
+performance:
+  batch_processing: true
+  batch_size: 32
+  cache_enabled: true
+  cache_ttl: 3600
+  gpu_acceleration: false
+  max_concurrent_sessions: 100
+  memory_optimization: true
+  message_queue_size: 10000
+providers:
+  cognitive_core:
+    api_key: null
+    base_url: null
+    enabled: true
+    max_tokens: 500
+    model_name: CognitiveBeeBot
+    rate_limit: 100
+    retry_attempts: 3
+    retry_delay: 1.0
+    temperature: 0.7
+    timeout: 30.0
+  ollama:
+    api_key: null
+    base_url: http://localhost:11434
+    enabled: true
+    max_tokens: 1000
+    model_name: llama2:7b
+    rate_limit: 100
+    retry_attempts: 3
+    retry_delay: 1.0
+    temperature: 0.7
+    timeout: 30.0
+  local:
+    enabled: false
+    model_name: llama-3.2-3b
+    max_tokens: 1000
+    temperature: 0.7
+safety:
+  constitutional_weight: 1.0
+  content_filtering: true
+  custom_safety_rules: []
+  harmful_pattern_detection: true
+  moderation_endpoint: null
+  safety_level: standard
+  safety_threshold: 0.7
+transformer:
+  activation_function: gelu
+  attention_type: sparse
+  context_window: 4096
+  d_ff: 2048
+  d_model: 256
+  dropout_rate: 0.1
+  layers: 12
+  n_heads: 4
