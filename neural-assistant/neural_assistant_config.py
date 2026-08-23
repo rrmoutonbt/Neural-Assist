@@ -3,6 +3,7 @@ Neural Assistant Configuration System
 Comprehensive configuration management with environment-specific settings
 """
 
+import asyncio
 import os
 import re
 import copy
@@ -529,7 +530,7 @@ class ConfigurationManager:
         known_fields = {f.name for f in fields(ModelProviderConfig)}
         for name, provider_data in config_dict.get('providers', {}).items():
             filtered = {k: v for k, v in provider_data.items() if k in known_fields}
-            if filtered.get('api_key') == '***REDACTED***':
+            if filtered.get('api_key') in (None, '***REDACTED***'):
                 filtered['api_key'] = None
             providers[name] = ModelProviderConfig(**filtered)
 

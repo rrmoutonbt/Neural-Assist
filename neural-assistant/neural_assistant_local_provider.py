@@ -21,9 +21,13 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
 import numpy as np
-import psutil
 
-from neural_assistant import CircuitBreaker, LanguageModelAPI, retry_with_backoff
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
+from neural_assistant_base import CircuitBreaker, LanguageModelAPI, retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
@@ -681,8 +685,8 @@ class LocalLLMProvider(LanguageModelAPI):
             except Exception:
                 pass
         else:
-            ram_gb = psutil.virtual_memory().available / (1024 ** 3)
-            if ram_gb < required_gb * 1.5:
+            ram_gb = psutil.virtual_memory().available / (1024 ** 3) if psutil else None
+            if ram_gb is not None and ram_gb < required_gb * 1.5:
                 logger.warning(
                     f"Available RAM {ram_gb:.1f}GB may be tight for {self.model_name} "
                     f"({required_gb}GB)."
