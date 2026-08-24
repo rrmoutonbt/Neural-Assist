@@ -504,7 +504,7 @@ class CodeExecutor:
         """Create a restricted environment for subprocess execution."""
         safe = {}
         # Only pass through essential env vars
-        for key in ['PATH', 'SYSTEMROOT', 'TEMP', 'TMP', 'HOME', 'PYTHONPATH', 'NODE_PATH']:
+        for key in ['PATH', 'SYSTEMROOT', 'TEMP', 'TMP', 'HOME']:
             val = os.environ.get(key)
             if val:
                 safe[key] = val

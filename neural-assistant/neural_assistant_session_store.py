@@ -39,13 +39,19 @@ class SessionStore:
                         context_window INTEGER NOT NULL DEFAULT 8192,
                         token_count INTEGER NOT NULL DEFAULT 0,
                         created_at TEXT NOT NULL,
-                        last_activity TEXT NOT NULL
+                        last_activity TEXT NOT NULL,
+                        active_provider TEXT DEFAULT NULL
                     )
                 """)
                 conn.execute("""
                     CREATE INDEX IF NOT EXISTS idx_sessions_last_activity
                     ON sessions(last_activity)
                 """)
+                # Migrate: add active_provider column if missing (existing DBs)
+                try:
+                    conn.execute("ALTER TABLE sessions ADD COLUMN active_provider TEXT DEFAULT NULL")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
                 conn.commit()
             finally:
                 conn.close()
@@ -56,7 +62,8 @@ class SessionStore:
 
     def save_session(self, session_id: str, messages: List[Dict[str, Any]],
                      context_window: int = 8192, token_count: int = 0,
-                     created_at: Optional[datetime] = None):
+                     created_at: Optional[datetime] = None,
+                     active_provider: Optional[str] = None):
         """Save or update a session."""
         now = datetime.now().isoformat()
         created = (created_at or datetime.now()).isoformat()
@@ -73,14 +80,15 @@ class SessionStore:
             conn = self._conn()
             try:
                 conn.execute("""
-                    INSERT INTO sessions (session_id, messages, context_window, token_count, created_at, last_activity)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO sessions (session_id, messages, context_window, token_count, created_at, last_activity, active_provider)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(session_id) DO UPDATE SET
                         messages = excluded.messages,
                         token_count = excluded.token_count,
-                        last_activity = excluded.last_activity
+                        last_activity = excluded.last_activity,
+                        active_provider = excluded.active_provider
                 """, (session_id, json.dumps(serializable), context_window,
-                      token_count, created, now))
+                      token_count, created, now, active_provider))
                 conn.commit()
             finally:
                 conn.close()
@@ -91,7 +99,7 @@ class SessionStore:
             conn = self._conn()
             try:
                 row = conn.execute(
-                    "SELECT messages, context_window, token_count, created_at, last_activity "
+                    "SELECT messages, context_window, token_count, created_at, last_activity, active_provider "
                     "FROM sessions WHERE session_id = ?",
                     (session_id,),
                 ).fetchone()
@@ -109,6 +117,7 @@ class SessionStore:
             'token_count': row[2],
             'created_at': row[3],
             'last_activity': row[4],
+            'active_provider': row[5] if len(row) > 5 else None,
         }
 
     def delete_session(self, session_id: str) -> bool:

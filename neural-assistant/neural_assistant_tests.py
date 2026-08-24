@@ -17,8 +17,9 @@ from neural_assistant import (
     NeuralAssistant, NeuralAssistantAPI, NeuralAssistantExtensions,
     NeuralAssistantFactory, AttentionMechanism, AttentionType,
     TransformerBlock, ConstitutionalAI, SafetyLevel, ModelProvider,
-    CircuitBreaker, EmbeddingService,
+    EmbeddingService,
 )
+from neural_assistant_base import CircuitBreaker
 from neural_assistant_config import (
     NeuralAssistantConfig, TransformerConfig, CognitiveConfig,
     SafetyConfig, ModelProviderConfig, ConfigurationManager,
@@ -279,7 +280,8 @@ class TestNeuralAssistant:
             if provider in neural_assistant_instance.model_providers:
                 success = await neural_assistant_instance.switch_provider(session_id, provider)
                 assert success == True
-                assert neural_assistant_instance.active_provider == provider
+                context = neural_assistant_instance.conversations[session_id]
+                assert context.active_provider == provider.value
     
     @pytest.mark.asyncio
     async def test_mathematical_content_processing(self, neural_assistant_instance):

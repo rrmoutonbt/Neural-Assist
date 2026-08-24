@@ -325,6 +325,10 @@ rate_limiter = RateLimiter(
     requests_per_minute=config.security.rate_limit_per_minute
 )
 
+# Pre-computed dummy hash for constant-time rejection of invalid usernames
+# Avoids bcrypt DoS amplification (hashing on every bad-username attempt)
+_DUMMY_BCRYPT_HASH = bcrypt.hashpw(b"dummy", bcrypt.gensalt()).decode() if _BCRYPT_AVAILABLE else ""
+
 # Neural Assistant
 neural_assistant = NeuralAssistant(config.__dict__)
 neural_api = NeuralAssistantAPI(neural_assistant)
@@ -502,7 +506,7 @@ async def create_token(body: TokenRequest):
         stored_hash = valid_users.get(body.username)
         if not stored_hash:
             # Constant-time rejection to prevent username enumeration
-            bcrypt.checkpw(b"dummy", bcrypt.hashpw(b"dummy", bcrypt.gensalt()))
+            bcrypt.checkpw(b"dummy", _DUMMY_BCRYPT_HASH.encode())
             raise HTTPException(status_code=401, detail="Invalid credentials")
         if not bcrypt.checkpw(body.password.encode(), stored_hash.encode()):
             raise HTTPException(status_code=401, detail="Invalid credentials")
@@ -732,13 +736,19 @@ async def compact_conversation(session_id: str, user: dict = Depends(get_current
     """Compress conversation context to save tokens."""
     try:
         if session_id not in neural_assistant.conversations:
+            await neural_assistant._restore_session(session_id)
+        if session_id not in neural_assistant.conversations:
             raise HTTPException(status_code=404, detail="Session not found")
         context = neural_assistant.conversations[session_id]
+        # Snapshot messages under lock, compress outside, then apply under lock
+        async with neural_assistant._conversations_lock:
+            messages_snapshot = list(context.messages)
         compressed_msgs, stats = await neural_assistant.context_compressor.handle_compact_command(
-            context.messages, neural_assistant.context_window
+            messages_snapshot, neural_assistant.context_window
         )
         async with neural_assistant._conversations_lock:
             context.messages = compressed_msgs
+            await neural_assistant._persist_session(session_id)
         return {"success": True, "stats": stats}
     except HTTPException:
         raise
@@ -1247,11 +1257,17 @@ async def cleanup_sessions(user=Depends(require_admin)):
 
 
 _PII_PATTERNS = [
-    (re.compile(r'(message|content|text|query|prompt)\s*[:=]\s*.{0,200}', re.IGNORECASE), r'\1: [REDACTED]'),
+    # Redact user message content — match quoted strings or to end of known delimiters
+    (re.compile(r'(message|content|query|prompt)\s*[:=]\s*"[^"]{0,500}"', re.IGNORECASE), r'\1: "[REDACTED]"'),
+    (re.compile(r'(message|content|query|prompt)\s*[:=]\s*\'[^\']{0,500}\'', re.IGNORECASE), r"\1: '[REDACTED]'"),
+    # Session IDs
     (re.compile(r'session_\w+_\d+'), '[SESSION_ID]'),
-    (re.compile(r'user_id["\s:=]+\w+', re.IGNORECASE), 'user_id: [REDACTED]'),
-    (re.compile(r'(token|key|password|secret|authorization)["\s:=]+\S+', re.IGNORECASE), r'\1: [REDACTED]'),
-    (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'), '[EMAIL]'),
+    # User IDs
+    (re.compile(r'(user_id)\s*[:=]\s*\S+', re.IGNORECASE), r'\1: [REDACTED]'),
+    # Secrets/tokens — only redact the value, keep the key name
+    (re.compile(r'(token|api_key|password|secret|authorization)\s*[:=]\s*\S+', re.IGNORECASE), r'\1: [REDACTED]'),
+    # Email addresses
+    (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'), '[EMAIL]'),
 ]
 
 
@@ -1299,6 +1315,7 @@ async def get_logs(level: str = "INFO", limit: int = 100, user=Depends(require_a
 
 # In-memory store for benchmark results (keyed by benchmark_id)
 _benchmark_results: Dict[str, Dict[str, Any]] = {}
+_MAX_BENCHMARK_RESULTS = 20
 
 
 @app.post("/api/v1/performance/benchmark")
@@ -1307,42 +1324,55 @@ async def performance_benchmark(user=Depends(require_admin)):
     benchmark_id = str(uuid.uuid4())[:8]
     _benchmark_results[benchmark_id] = {"status": "running", "started_at": datetime.now().isoformat()}
 
-    async def _run_benchmark():
-        benchmark_start = time.time()
-        test_messages = [
-            "What is artificial intelligence?",
-            "Solve this equation: 2x + 5 = 15",
-            "Analyze this code: def hello(): print('world')",
-            "Explain the transformer architecture",
-            "What are the ethical implications of AI?",
-        ]
-        results = []
-        for i, message in enumerate(test_messages):
-            start = time.time()
-            result = await neural_api.chat(user_id="benchmark_user", message=message)
-            elapsed = time.time() - start
-            results.append({
-                "scenario": f"Test {i+1}",
-                "message": message,
-                "response_time_ms": elapsed * 1000,
-                "tokens_used": result.get('metadata', {}).get('tokens_used', 0) if result['success'] else 0,
-                "success": result['success'],
-                "provider": result['metadata'].get('provider', 'unknown') if result['success'] else 'failed',
-            })
+    # Evict oldest results to prevent memory leak
+    while len(_benchmark_results) > _MAX_BENCHMARK_RESULTS:
+        oldest = next(iter(_benchmark_results))
+        del _benchmark_results[oldest]
 
-        total = time.time() - benchmark_start
-        avg = sum(r['response_time_ms'] for r in results) / len(results)
-        _benchmark_results[benchmark_id] = {
-            "status": "completed",
-            "benchmark_results": results,
-            "summary": {
-                "total_time_ms": total * 1000,
-                "average_response_time_ms": avg,
-                "total_tests": len(test_messages),
-                "successful_tests": sum(1 for r in results if r['success']),
+    async def _run_benchmark():
+        try:
+            benchmark_start = time.time()
+            test_messages = [
+                "What is artificial intelligence?",
+                "Solve this equation: 2x + 5 = 15",
+                "Analyze this code: def hello(): print('world')",
+                "Explain the transformer architecture",
+                "What are the ethical implications of AI?",
+            ]
+            results = []
+            for i, message in enumerate(test_messages):
+                start = time.time()
+                result = await neural_api.chat(user_id="benchmark_user", message=message)
+                elapsed = time.time() - start
+                results.append({
+                    "scenario": f"Test {i+1}",
+                    "message": message,
+                    "response_time_ms": elapsed * 1000,
+                    "tokens_used": result.get('metadata', {}).get('tokens_used', 0) if result['success'] else 0,
+                    "success": result['success'],
+                    "provider": result['metadata'].get('provider', 'unknown') if result['success'] else 'failed',
+                })
+
+            total = time.time() - benchmark_start
+            avg = sum(r['response_time_ms'] for r in results) / len(results)
+            _benchmark_results[benchmark_id] = {
+                "status": "completed",
+                "benchmark_results": results,
+                "summary": {
+                    "total_time_ms": total * 1000,
+                    "average_response_time_ms": avg,
+                    "total_tests": len(test_messages),
+                    "successful_tests": sum(1 for r in results if r['success']),
+                    "timestamp": datetime.now().isoformat(),
+                },
+            }
+        except Exception as e:
+            logger.error(f"Benchmark failed: {e}")
+            _benchmark_results[benchmark_id] = {
+                "status": "failed",
+                "error": str(e),
                 "timestamp": datetime.now().isoformat(),
-            },
-        }
+            }
 
     asyncio.create_task(_run_benchmark())
     return {"success": True, "benchmark_id": benchmark_id, "message": "Benchmark started. Poll GET /api/v1/performance/benchmark/{id} for results."}
@@ -1403,16 +1433,18 @@ async def upload_project_file(
     key = _get_session_key(session_id)
     content = await file.read()
     file_id = f"file_{uuid.uuid4().hex[:12]}"
+    filename = file.filename or "unknown"
+    content_type = file.content_type or ""
 
     entry = {
         "file_id": file_id,
-        "name": file.filename,
+        "name": filename,
         "source": "upload",
         "size": len(content),
-        "badge": (file.filename.split(".")[-1].upper() if "." in file.filename else "FILE"),
+        "badge": (filename.split(".")[-1].upper() if "." in filename else "FILE"),
         "status": "indexing",
         "indexed_chunks": 0,
-        "meta": {"content_type": file.content_type},
+        "meta": {"content_type": content_type},
         "created_at": datetime.now().isoformat(),
     }
     _project_files[key].append(entry)
@@ -1422,11 +1454,11 @@ async def upload_project_file(
     async def _index():
         try:
             text = ""
-            if file.content_type and file.content_type.startswith("text/") or \
-               file.filename.endswith(('.txt', '.md', '.py', '.js', '.ts', '.html', '.css',
-                                       '.json', '.xml', '.yaml', '.yml', '.csv', '.sh')):
+            if content_type.startswith("text/") or \
+               filename.endswith(('.txt', '.md', '.py', '.js', '.ts', '.html', '.css',
+                                   '.json', '.xml', '.yaml', '.yml', '.csv', '.sh')):
                 text = content.decode("utf-8", errors="replace")[:50000]
-            elif file.filename.endswith('.pdf'):
+            elif filename.endswith('.pdf'):
                 try:
                     import io
                     from PyPDF2 import PdfReader

@@ -87,6 +87,7 @@ class ConversationContext:
     token_count: int = 0
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
+    active_provider: Optional[str] = None  # Per-session provider override
 
 
 # CircuitBreaker, LanguageModelAPI, retry_with_backoff imported from neural_assistant_base
@@ -927,36 +928,55 @@ class NeuralAssistant:
                 return p
         return ModelProvider.LOCAL
 
-    def _persist_session(self, session_id: str):
-        """Write session to SQLite store."""
+    async def _persist_session(self, session_id: str):
+        """Write session to SQLite store without blocking the event loop.
+        Must be called while holding _conversations_lock (to snapshot messages safely)."""
         ctx = self.conversations.get(session_id)
         if ctx:
+            # Snapshot under the caller's lock to avoid race conditions
+            messages_copy = list(ctx.messages)
+            cw = ctx.context_window
+            tc = ctx.token_count
+            ca = ctx.created_at
+            ap = ctx.active_provider
             try:
-                self.session_store.save_session(
-                    session_id, ctx.messages, ctx.context_window,
-                    ctx.token_count, ctx.created_at,
+                await asyncio.to_thread(
+                    self.session_store.save_session,
+                    session_id, messages_copy, cw, tc, ca, ap,
                 )
             except Exception as e:
                 logger.error(f"Failed to persist session {session_id}: {e}")
 
-    def _restore_session(self, session_id: str) -> bool:
-        """Load session from SQLite into memory. Returns True if found."""
-        if session_id in self.conversations:
+    async def _restore_session(self, session_id: str) -> bool:
+        """Load session from SQLite into memory. Returns True if found.
+        Thread-safe: acquires _conversations_lock to prevent duplicate restores."""
+        async with self._conversations_lock:
+            if session_id in self.conversations:
+                return True
+            try:
+                data = await asyncio.to_thread(
+                    self.session_store.load_session, session_id,
+                )
+            except Exception as e:
+                logger.error(f"Failed to load session {session_id}: {e}")
+                return False
+            if not data:
+                return False
+
+            # Parse stored ISO timestamps back to datetime
+            created = datetime.fromisoformat(data['created_at']) if data.get('created_at') else datetime.now()
+            last_act = datetime.fromisoformat(data['last_activity']) if data.get('last_activity') else datetime.now()
+
+            self.conversations[session_id] = ConversationContext(
+                session_id=session_id,
+                messages=data['messages'],
+                context_window=data['context_window'],
+                token_count=data['token_count'],
+                created_at=created,
+                last_activity=last_act,
+                active_provider=data.get('active_provider'),
+            )
             return True
-        try:
-            data = self.session_store.load_session(session_id)
-        except Exception as e:
-            logger.error(f"Failed to load session {session_id}: {e}")
-            return False
-        if not data:
-            return False
-        self.conversations[session_id] = ConversationContext(
-            session_id=session_id,
-            messages=data['messages'],
-            context_window=data['context_window'],
-            token_count=data['token_count'],
-        )
-        return True
 
     async def start_conversation(self, user_id: str) -> str:
         session_id = f"session_{user_id}_{int(time.time())}"
@@ -965,7 +985,7 @@ class NeuralAssistant:
                 session_id=session_id,
                 context_window=self.context_window,
             )
-        self._persist_session(session_id)
+            await self._persist_session(session_id)
         logger.info(f"Started conversation session: {session_id}")
         return session_id
 
@@ -976,7 +996,7 @@ class NeuralAssistant:
 
         # Try to restore from persistent store if not in memory
         if session_id not in self.conversations:
-            self._restore_session(session_id)
+            await self._restore_session(session_id)
 
         if session_id not in self.conversations:
             user_id = session_id.split('_')[1] if '_' in session_id else session_id
@@ -996,7 +1016,16 @@ class NeuralAssistant:
         # Safety evaluation
         safety_check = await self.constitutional_ai.evaluate_safety(message, "")
         if not safety_check['is_safe']:
-            return self._create_safety_response(safety_check)
+            safety_resp = self._create_safety_response(safety_check)
+            async with self._conversations_lock:
+                context.messages.append({
+                    'role': 'assistant',
+                    'content': safety_resp['content'],
+                    'timestamp': datetime.now(),
+                    'provider': 'safety',
+                })
+                await self._persist_session(session_id)
+            return safety_resp
 
         # Handle /compact command
         if message.strip().lower() == '/compact':
@@ -1054,7 +1083,7 @@ class NeuralAssistant:
                     'processing_time': processing_time,
                 })
                 context.last_activity = datetime.now()
-            self._persist_session(session_id)
+                await self._persist_session(session_id)
             return cap_response
 
         # Auto-compress context if threshold exceeded
@@ -1073,7 +1102,14 @@ class NeuralAssistant:
         cognitive_analysis = await self._cognitive_analysis(message, context)
 
         # Generate response with failover
-        response_provider = provider or self.active_provider
+        # Use per-session provider if set, otherwise fall back to global default
+        session_prov = context.active_provider
+        if session_prov:
+            try:
+                session_prov = ModelProvider(session_prov)
+            except ValueError:
+                session_prov = None
+        response_provider = provider or session_prov or self.active_provider
         response_data = await self._generate_response_with_failover(
             message, context, response_provider, cognitive_analysis
         )
@@ -1095,15 +1131,14 @@ class NeuralAssistant:
                 'processing_time': processing_time,
             })
             context.last_activity = datetime.now()
-
-        self._persist_session(session_id)
+            await self._persist_session(session_id)
         return final_response
 
     async def process_message_stream(self, session_id: str, message: str,
                                      provider: Optional[ModelProvider] = None) -> AsyncIterator[str]:
         """Stream a response token-by-token."""
         if session_id not in self.conversations:
-            self._restore_session(session_id)
+            await self._restore_session(session_id)
         if session_id not in self.conversations:
             user_id = session_id.split('_')[1] if '_' in session_id else session_id
             session_id = await self.start_conversation(user_id)
@@ -1120,7 +1155,14 @@ class NeuralAssistant:
             yield "I cannot provide a response to that request as it may involve content that doesn't align with safety guidelines."
             return
 
-        response_provider = provider or self.active_provider
+        # Use per-session provider if set, otherwise fall back to global default
+        session_prov = context.active_provider
+        if session_prov:
+            try:
+                session_prov = ModelProvider(session_prov)
+            except ValueError:
+                session_prov = None
+        response_provider = provider or session_prov or self.active_provider
         if response_provider not in self.model_providers:
             yield "No provider available for streaming. Please configure an API key."
             return
@@ -1148,7 +1190,7 @@ class NeuralAssistant:
                 'provider': response_provider.value,
             })
             context.last_activity = datetime.now()
-        self._persist_session(session_id)
+            await self._persist_session(session_id)
 
     async def _cognitive_analysis(self, message: str, context: ConversationContext) -> Dict[str, Any]:
         analysis = await self.cognitive_core.process_input(
@@ -1337,8 +1379,9 @@ class NeuralAssistant:
                         'content': f'Switched to {provider.value} provider',
                         'timestamp': datetime.now(),
                     })
-                self.active_provider = provider
-            logger.info(f"Switched to provider: {provider.value}")
+                    self.conversations[session_id].active_provider = provider.value
+                    await self._persist_session(session_id)
+            logger.info(f"Session {session_id} switched to provider: {provider.value}")
             return True
         return False
 
@@ -1347,7 +1390,7 @@ class NeuralAssistant:
 
     async def get_conversation_history(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
         if session_id not in self.conversations:
-            self._restore_session(session_id)
+            await self._restore_session(session_id)
         if session_id not in self.conversations:
             return []
         messages = self.conversations[session_id].messages[-limit:]
@@ -2013,6 +2056,8 @@ class NeuralAssistantExtensions:
 
     async def analyze_conversation_patterns(self, session_id: str) -> Dict[str, Any]:
         if session_id not in self.assistant.conversations:
+            await self.assistant._restore_session(session_id)
+        if session_id not in self.assistant.conversations:
             return {'error': 'Session not found'}
 
         context = self.assistant.conversations[session_id]
@@ -2067,6 +2112,8 @@ class NeuralAssistantExtensions:
 
     async def export_conversation(self, session_id: str, format: str = 'json') -> Dict[str, Any]:
         if session_id not in self.assistant.conversations:
+            await self.assistant._restore_session(session_id)
+        if session_id not in self.assistant.conversations:
             return {'error': 'Session not found'}
 
         context = self.assistant.conversations[session_id]
@@ -2112,11 +2159,24 @@ class PerformanceOptimizer:
         }
 
     async def optimize_memory_usage(self) -> Dict[str, Any]:
-        trimmed = 0
+        # Snapshot sessions needing trimming under the lock, then release
+        to_trim = {}
         async with self.assistant._conversations_lock:
             for session_id, context in self.assistant.conversations.items():
                 if len(context.messages) > 100:
-                    summary_text = await self._summarize_old_messages(context.messages[:-50])
+                    to_trim[session_id] = list(context.messages)
+
+        # Summarize outside the lock to avoid blocking chat operations
+        summaries = {}
+        for session_id, messages in to_trim.items():
+            summaries[session_id] = await self._summarize_old_messages(messages[:-50])
+
+        # Re-acquire lock to apply changes
+        trimmed = 0
+        async with self.assistant._conversations_lock:
+            for session_id, summary_text in summaries.items():
+                context = self.assistant.conversations.get(session_id)
+                if context and len(context.messages) > 100:
                     context.messages = [
                         {'role': 'system', 'content': f'Previous conversation summary: {summary_text}',
                          'timestamp': context.created_at}
