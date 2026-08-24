@@ -218,7 +218,16 @@ class LlamaCppBackend(LocalModelBackend):
 
         stream = await loop.run_in_executor(None, _create_stream)
 
-        for chunk in stream:
+        def _next_chunk(it):
+            try:
+                return next(it)
+            except StopIteration:
+                return None
+
+        while True:
+            chunk = await loop.run_in_executor(None, _next_chunk, stream)
+            if chunk is None:
+                break
             delta = chunk.get('choices', [{}])[0].get('delta', {})
             content = delta.get('content', '')
             if content:

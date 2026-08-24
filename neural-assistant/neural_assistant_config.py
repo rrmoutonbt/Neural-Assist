@@ -235,7 +235,7 @@ class ConfigurationManager:
     """Manage Neural Assistant configuration across environments"""
     
     def __init__(self, config_path: Optional[Path] = None):
-        self.config_path = config_path or Path("config")
+        self.config_path = config_path or (Path(__file__).parent / "config")
         self.config_path.mkdir(exist_ok=True)
         
         # Environment-specific config files
@@ -453,6 +453,7 @@ class ConfigurationManager:
                 'api_key_encryption': config.security.api_key_encryption,
                 'session_encryption': config.security.session_encryption,
                 'rate_limiting': config.security.rate_limiting,
+                'rate_limit_per_minute': config.security.rate_limit_per_minute,
                 'ip_whitelist': config.security.ip_whitelist,
                 'cors_origins': config.security.cors_origins,
                 'auth_required': config.security.auth_required,

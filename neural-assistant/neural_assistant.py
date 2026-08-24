@@ -36,6 +36,7 @@ from neural_assistant_context_compressor import ContextCompressor
 from neural_assistant_tool_permissions import ToolPermissionManager
 from neural_assistant_mcp import MCPManager
 from neural_assistant_local_provider import LocalLLMProvider, LocalModelManager
+from neural_assistant_session_store import SessionStore
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +473,18 @@ class GoogleProvider(LanguageModelAPI):
             ),
             stream=True,
         )
-        for chunk in resp:
+
+        def _next_chunk(it):
+            try:
+                return next(it)
+            except StopIteration:
+                return None
+
+        it = iter(resp)
+        while True:
+            chunk = await asyncio.to_thread(_next_chunk, it)
+            if chunk is None:
+                break
             if chunk.text:
                 yield chunk.text
 
@@ -705,6 +717,9 @@ class NeuralAssistant:
         self.global_memory: Dict[str, Any] = {}
         self.metrics = TokenMetrics()
 
+        # Session persistence
+        self.session_store = SessionStore()
+
         # Context compression
         compression_cfg = config.get('compression', {})
         if hasattr(compression_cfg, '__dataclass_fields__'):
@@ -912,6 +927,37 @@ class NeuralAssistant:
                 return p
         return ModelProvider.LOCAL
 
+    def _persist_session(self, session_id: str):
+        """Write session to SQLite store."""
+        ctx = self.conversations.get(session_id)
+        if ctx:
+            try:
+                self.session_store.save_session(
+                    session_id, ctx.messages, ctx.context_window,
+                    ctx.token_count, ctx.created_at,
+                )
+            except Exception as e:
+                logger.error(f"Failed to persist session {session_id}: {e}")
+
+    def _restore_session(self, session_id: str) -> bool:
+        """Load session from SQLite into memory. Returns True if found."""
+        if session_id in self.conversations:
+            return True
+        try:
+            data = self.session_store.load_session(session_id)
+        except Exception as e:
+            logger.error(f"Failed to load session {session_id}: {e}")
+            return False
+        if not data:
+            return False
+        self.conversations[session_id] = ConversationContext(
+            session_id=session_id,
+            messages=data['messages'],
+            context_window=data['context_window'],
+            token_count=data['token_count'],
+        )
+        return True
+
     async def start_conversation(self, user_id: str) -> str:
         session_id = f"session_{user_id}_{int(time.time())}"
         async with self._conversations_lock:
@@ -919,6 +965,7 @@ class NeuralAssistant:
                 session_id=session_id,
                 context_window=self.context_window,
             )
+        self._persist_session(session_id)
         logger.info(f"Started conversation session: {session_id}")
         return session_id
 
@@ -926,6 +973,10 @@ class NeuralAssistant:
                               provider: Optional[ModelProvider] = None) -> Dict[str, Any]:
         start_time = time.time()
         self.metrics.total_requests += 1
+
+        # Try to restore from persistent store if not in memory
+        if session_id not in self.conversations:
+            self._restore_session(session_id)
 
         if session_id not in self.conversations:
             user_id = session_id.split('_')[1] if '_' in session_id else session_id
@@ -1003,6 +1054,7 @@ class NeuralAssistant:
                     'processing_time': processing_time,
                 })
                 context.last_activity = datetime.now()
+            self._persist_session(session_id)
             return cap_response
 
         # Auto-compress context if threshold exceeded
@@ -1044,11 +1096,14 @@ class NeuralAssistant:
             })
             context.last_activity = datetime.now()
 
+        self._persist_session(session_id)
         return final_response
 
     async def process_message_stream(self, session_id: str, message: str,
                                      provider: Optional[ModelProvider] = None) -> AsyncIterator[str]:
         """Stream a response token-by-token."""
+        if session_id not in self.conversations:
+            self._restore_session(session_id)
         if session_id not in self.conversations:
             user_id = session_id.split('_')[1] if '_' in session_id else session_id
             session_id = await self.start_conversation(user_id)
@@ -1093,6 +1148,7 @@ class NeuralAssistant:
                 'provider': response_provider.value,
             })
             context.last_activity = datetime.now()
+        self._persist_session(session_id)
 
     async def _cognitive_analysis(self, message: str, context: ConversationContext) -> Dict[str, Any]:
         analysis = await self.cognitive_core.process_input(
@@ -1290,6 +1346,8 @@ class NeuralAssistant:
         return [p.value for p in self.model_providers.keys()]
 
     async def get_conversation_history(self, session_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        if session_id not in self.conversations:
+            self._restore_session(session_id)
         if session_id not in self.conversations:
             return []
         messages = self.conversations[session_id].messages[-limit:]

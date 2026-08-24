@@ -367,28 +367,47 @@ class CodeExecutor:
     # Patterns that indicate dangerous operations
     BLOCKED_PATTERNS = {
         'python': [
-            r'import\s+(os|sys|subprocess|shutil|socket|ctypes|signal)',
+            r'import\s+(os|sys|subprocess|shutil|socket|ctypes|signal|pty|commands|pipes|fcntl|resource)',
+            r'from\s+(os|sys|subprocess|shutil|socket|ctypes|signal|pty|commands|pipes|fcntl|resource)\s+import',
             r'__import__\s*\(',
+            r'importlib',
             r'exec\s*\(', r'eval\s*\(',
-            r'open\s*\(.*(w|a|x)',  # Write mode file access
-            r'os\.(system|popen|exec|remove|rmdir|unlink)',
+            r'compile\s*\(',
+            r'getattr\s*\(',
+            r'globals\s*\(', r'locals\s*\(',
+            r'__builtins__', r'__subclasses__', r'__bases__', r'__mro__',
+            r'open\s*\(',  # Block all file access
+            r'os\.',
             r'subprocess\.',
-            r'shutil\.(rmtree|move|copy)',
+            r'shutil\.',
+            r'pathlib\.Path',
+            r'io\.(open|FileIO|BufferedWriter|BufferedRandom)',
+            r'socket\.',
+            r'breakpoint\s*\(',
+            r'input\s*\(',  # Blocks stdin reads that hang the process
         ],
         'javascript': [
-            r'require\s*\(\s*[\'"](?:child_process|fs|net|http|os)',
-            r'process\.exit',
+            r'require\s*\(\s*[\'"](?:child_process|fs|net|http|https|os|cluster|dgram|dns|tls|vm|worker_threads)',
+            r'import\s*\(',  # Dynamic import
+            r'process\.(exit|env|kill|binding)',
             r'eval\s*\(',
+            r'Function\s*\(',
+            r'globalThis',
         ],
         'bash': [
-            r'\brm\s+-rf\b',
+            r'\brm\s',
             r'\bsudo\b',
-            r'\bchmod\b',
-            r'\bcurl\b.*\|\s*bash',
-            r'\bwget\b.*\|\s*bash',
+            r'\bchmod\b', r'\bchown\b',
+            r'\bcurl\b', r'\bwget\b',
             r'>\s*/dev/sd',
             r'\bmkfs\b',
             r'\bdd\s+if=',
+            r'\bkill\b', r'\bkillall\b',
+            r'\bmount\b', r'\bumount\b',
+            r'\bcat\s+/etc/',
+            r'\bnc\b', r'\bncat\b',  # netcat
+            r'\bpython', r'\bperl\b', r'\bruby\b',  # interpreter escape
+            r'\benv\b',
         ],
     }
 

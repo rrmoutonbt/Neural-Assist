@@ -11,6 +11,7 @@ Patterns inspired by claude-code architecture:
 """
 
 import os
+import re
 import time
 import json
 import uuid
@@ -24,6 +25,13 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 import collections
 from collections import defaultdict
+
+try:
+    import bcrypt
+    _BCRYPT_AVAILABLE = True
+except ImportError:
+    bcrypt = None
+    _BCRYPT_AVAILABLE = False
 
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect,
@@ -133,56 +141,40 @@ class TokenResponse(BaseModel):
 # JWT AUTHENTICATION
 # ============================================================================
 
-class JWTAuth:
-    """Simple HMAC-SHA256 JWT implementation.
-    In production, use python-jose or PyJWT with RS256 + key rotation."""
+import jwt as pyjwt
 
-    def __init__(self, secret: str, expiry_seconds: int = 3600):
-        self._secret = secret.encode()
+
+class JWTAuth:
+    """JWT authentication using PyJWT with HS256.
+    For RS256 key rotation, set JWT_ALGORITHM=RS256 and provide PEM keys."""
+
+    def __init__(self, secret: str, expiry_seconds: int = 3600,
+                 algorithm: str = "HS256"):
+        self._secret = secret
         self._expiry = expiry_seconds
+        self._algorithm = algorithm
 
     def create_token(self, user_id: str, permissions: List[str]) -> str:
-        header = self._b64url_encode(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-        payload_data = {
+        payload = {
             "sub": user_id,
             "permissions": permissions,
             "iat": int(time.time()),
             "exp": int(time.time()) + self._expiry,
             "jti": str(uuid.uuid4()),
         }
-        payload = self._b64url_encode(json.dumps(payload_data).encode())
-        signature = self._sign(f"{header}.{payload}")
-        return f"{header}.{payload}.{signature}"
+        return pyjwt.encode(payload, self._secret, algorithm=self._algorithm)
 
     def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
         try:
-            parts = token.split('.')
-            if len(parts) != 3:
-                return None
-            header, payload, signature = parts
-            expected_sig = self._sign(f"{header}.{payload}")
-            if not hmac.compare_digest(signature, expected_sig):
-                return None
-            payload_data = json.loads(self._b64url_decode(payload))
-            if payload_data.get('exp', 0) < time.time():
-                return None
-            return payload_data
-        except Exception:
+            payload = pyjwt.decode(
+                token, self._secret, algorithms=[self._algorithm],
+                options={"require": ["sub", "exp", "iat", "jti"]},
+            )
+            return payload
+        except pyjwt.ExpiredSignatureError:
             return None
-
-    def _sign(self, data: str) -> str:
-        sig = hmac.HMAC(self._secret, data.encode(), hashlib.sha256).digest()
-        return self._b64url_encode(sig)
-
-    @staticmethod
-    def _b64url_encode(data: bytes) -> str:
-        return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
-
-    @staticmethod
-    def _b64url_decode(data: str) -> bytes:
-        padding = (4 - len(data) % 4) % 4
-        data += '=' * padding
-        return base64.urlsafe_b64decode(data)
+        except pyjwt.InvalidTokenError:
+            return None
 
 
 # ============================================================================
@@ -321,8 +313,11 @@ config = config_factory.create_from_environment()
 
 # JWT setup
 _jwt_secret = os.environ.get('JWT_SECRET', os.environ.get('NEURAL_ASSISTANT_JWT_SECRET', 'change-me-in-production'))
-if _jwt_secret == 'change-me-in-production' and config.environment == Environment.PRODUCTION:
-    raise RuntimeError("JWT_SECRET must be set in production. Set the JWT_SECRET environment variable.")
+if _jwt_secret == 'change-me-in-production':
+    if config.environment == Environment.PRODUCTION:
+        raise RuntimeError("JWT_SECRET must be set in production. Set the JWT_SECRET environment variable.")
+    else:
+        logger.warning("Using default JWT secret. Set JWT_SECRET in .env before enabling authentication.")
 jwt_auth = JWTAuth(_jwt_secret, expiry_seconds=config.security.token_expiry)
 
 # Rate limiter
@@ -482,6 +477,9 @@ async def add_headers_middleware(request: Request, call_next):
 
     response.headers["X-Process-Time"] = f"{time.time() - start_time:.4f}"
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
 
@@ -493,12 +491,20 @@ async def add_headers_middleware(request: Request, call_next):
 async def create_token(body: TokenRequest):
     """Generate a JWT access token.
     In production, validate against a user database."""
-    # For local dev, accept any credentials. In production, verify against DB.
+    # Validate against NEURAL_ASSISTANT_USERS env var.
+    # Passwords must be stored as bcrypt hashes. Generate with:
+    #   python -c "import bcrypt; print(bcrypt.hashpw(b'yourpassword', bcrypt.gensalt()).decode())"
     valid_users = json.loads(os.environ.get('NEURAL_ASSISTANT_USERS', '{}'))
 
     if valid_users:
-        stored_password = valid_users.get(body.username)
-        if not stored_password or not hmac.compare_digest(stored_password.encode(), body.password.encode()):
+        if not _BCRYPT_AVAILABLE:
+            raise HTTPException(status_code=503, detail="Authentication unavailable: bcrypt package not installed")
+        stored_hash = valid_users.get(body.username)
+        if not stored_hash:
+            # Constant-time rejection to prevent username enumeration
+            bcrypt.checkpw(b"dummy", bcrypt.hashpw(b"dummy", bcrypt.gensalt()))
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        if not bcrypt.checkpw(body.password.encode(), stored_hash.encode()):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         permissions = ["read", "write"]
         if body.username in json.loads(os.environ.get('NEURAL_ASSISTANT_ADMINS', '[]')):
@@ -506,7 +512,7 @@ async def create_token(body: TokenRequest):
     else:
         if config.environment == Environment.PRODUCTION:
             raise HTTPException(status_code=503, detail="Authentication not configured")
-        logger.warning("No users configured — dev mode allows default user only")
+        logger.warning("No users configured — dev/dev credentials active. Set NEURAL_ASSISTANT_USERS in .env to secure.")
         if body.username == "dev" and body.password == "dev":
             permissions = ["read", "write"]  # not admin
         else:
@@ -833,14 +839,27 @@ async def list_mcp_tools(user: dict = Depends(get_current_user)):
     return {"tools": schemas, "count": len(schemas)}
 
 
+class MCPServerRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, pattern=r'^[a-zA-Z0-9_-]+$')
+    transport: str = Field("stdio", pattern=r'^(stdio|sse|streamable-http)$')
+    command: Optional[str] = Field(None, max_length=500)
+    args: List[str] = Field(default_factory=list)
+    url: Optional[str] = Field(None, max_length=2000)
+    env: Dict[str, str] = Field(default_factory=dict)
+    enabled: bool = Field(True)
+    timeout: float = Field(30.0, ge=1.0, le=300.0)
+
+
 @app.post("/api/v1/mcp/servers")
-async def add_mcp_server(body: dict, user: dict = Depends(get_current_user)):
-    """Connect a new MCP server at runtime."""
+async def add_mcp_server(body: MCPServerRequest, user: dict = Depends(require_admin)):
+    """Connect a new MCP server at runtime. Requires admin."""
     try:
-        success = await neural_assistant.mcp_manager.add_server(body)
+        success = await neural_assistant.mcp_manager.add_server(body.model_dump())
         if not success:
             raise HTTPException(status_code=400, detail="Failed to connect MCP server")
         return {"success": True, "servers": neural_assistant.mcp_manager.get_server_status()}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"MCP add server error: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -944,8 +963,15 @@ class CodeExecRequest(BaseModel):
 
 
 @app.post("/api/v1/execute-code")
-async def execute_code(request: CodeExecRequest, user=Depends(check_rate_limit)):
-    """Execute code in a sandboxed environment."""
+async def execute_code(request: CodeExecRequest, user=Depends(require_admin)):
+    """Execute code in a sandboxed environment. Requires admin privileges.
+    Disabled in production unless ENABLE_CODE_EXECUTION=true is set."""
+    if config.environment == Environment.PRODUCTION:
+        if not os.environ.get('ENABLE_CODE_EXECUTION', '').lower() == 'true':
+            raise HTTPException(
+                status_code=403,
+                detail="Code execution is disabled in production. Set ENABLE_CODE_EXECUTION=true to enable.",
+            )
     try:
         result = await neural_assistant.capabilities.code_executor.execute(
             code=request.code,
@@ -1220,9 +1246,25 @@ async def cleanup_sessions(user=Depends(require_admin)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+_PII_PATTERNS = [
+    (re.compile(r'(message|content|text|query|prompt)\s*[:=]\s*.{0,200}', re.IGNORECASE), r'\1: [REDACTED]'),
+    (re.compile(r'session_\w+_\d+'), '[SESSION_ID]'),
+    (re.compile(r'user_id["\s:=]+\w+', re.IGNORECASE), 'user_id: [REDACTED]'),
+    (re.compile(r'(token|key|password|secret|authorization)["\s:=]+\S+', re.IGNORECASE), r'\1: [REDACTED]'),
+    (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'), '[EMAIL]'),
+]
+
+
+def _sanitize_log_line(line: str) -> str:
+    """Remove potential PII from a log line before returning via API."""
+    for pattern, replacement in _PII_PATTERNS:
+        line = pattern.sub(replacement, line)
+    return line
+
+
 @app.get("/api/v1/admin/logs")
 async def get_logs(level: str = "INFO", limit: int = 100, user=Depends(require_admin)):
-    """Read actual log entries from the log file."""
+    """Read log entries from the log file. PII is redacted from output."""
     limit = min(limit, 1000)
     log_file = getattr(config, 'log_file', 'neural_assistant.log')
     entries = []
@@ -1235,7 +1277,7 @@ async def get_logs(level: str = "INFO", limit: int = 100, user=Depends(require_a
             for line in lines[-limit * 3:]:
                 for lvl, pri in level_priority.items():
                     if lvl in line and pri >= min_level:
-                        entries.append(line.strip())
+                        entries.append(_sanitize_log_line(line.strip()))
                         break
             entries = entries[-limit:]
     except Exception as e:
@@ -1244,43 +1286,64 @@ async def get_logs(level: str = "INFO", limit: int = 100, user=Depends(require_a
     return {"success": True, "logs": entries, "total_entries": len(entries)}
 
 
-@app.get("/api/v1/performance/benchmark")
-async def performance_benchmark(user=Depends(require_admin)):
-    benchmark_start = time.time()
-    test_messages = [
-        "What is artificial intelligence?",
-        "Solve this equation: 2x + 5 = 15",
-        "Analyze this code: def hello(): print('world')",
-        "Explain the transformer architecture",
-        "What are the ethical implications of AI?",
-    ]
-    results = []
-    for i, message in enumerate(test_messages):
-        start = time.time()
-        result = await neural_api.chat(user_id="benchmark_user", message=message)
-        elapsed = time.time() - start
-        results.append({
-            "scenario": f"Test {i+1}",
-            "message": message,
-            "response_time_ms": elapsed * 1000,
-            "tokens_used": result.get('metadata', {}).get('tokens_used', 0) if result['success'] else 0,
-            "success": result['success'],
-            "provider": result['metadata'].get('provider', 'unknown') if result['success'] else 'failed',
-        })
+# In-memory store for benchmark results (keyed by benchmark_id)
+_benchmark_results: Dict[str, Dict[str, Any]] = {}
 
-    total = time.time() - benchmark_start
-    avg = sum(r['response_time_ms'] for r in results) / len(results)
-    return {
-        "success": True,
-        "benchmark_results": results,
-        "summary": {
-            "total_time_ms": total * 1000,
-            "average_response_time_ms": avg,
-            "total_tests": len(test_messages),
-            "successful_tests": sum(1 for r in results if r['success']),
-            "timestamp": datetime.now().isoformat(),
-        },
-    }
+
+@app.post("/api/v1/performance/benchmark")
+async def performance_benchmark(user=Depends(require_admin)):
+    """Launch a benchmark in the background. Returns a benchmark_id to poll."""
+    benchmark_id = str(uuid.uuid4())[:8]
+    _benchmark_results[benchmark_id] = {"status": "running", "started_at": datetime.now().isoformat()}
+
+    async def _run_benchmark():
+        benchmark_start = time.time()
+        test_messages = [
+            "What is artificial intelligence?",
+            "Solve this equation: 2x + 5 = 15",
+            "Analyze this code: def hello(): print('world')",
+            "Explain the transformer architecture",
+            "What are the ethical implications of AI?",
+        ]
+        results = []
+        for i, message in enumerate(test_messages):
+            start = time.time()
+            result = await neural_api.chat(user_id="benchmark_user", message=message)
+            elapsed = time.time() - start
+            results.append({
+                "scenario": f"Test {i+1}",
+                "message": message,
+                "response_time_ms": elapsed * 1000,
+                "tokens_used": result.get('metadata', {}).get('tokens_used', 0) if result['success'] else 0,
+                "success": result['success'],
+                "provider": result['metadata'].get('provider', 'unknown') if result['success'] else 'failed',
+            })
+
+        total = time.time() - benchmark_start
+        avg = sum(r['response_time_ms'] for r in results) / len(results)
+        _benchmark_results[benchmark_id] = {
+            "status": "completed",
+            "benchmark_results": results,
+            "summary": {
+                "total_time_ms": total * 1000,
+                "average_response_time_ms": avg,
+                "total_tests": len(test_messages),
+                "successful_tests": sum(1 for r in results if r['success']),
+                "timestamp": datetime.now().isoformat(),
+            },
+        }
+
+    asyncio.create_task(_run_benchmark())
+    return {"success": True, "benchmark_id": benchmark_id, "message": "Benchmark started. Poll GET /api/v1/performance/benchmark/{id} for results."}
+
+
+@app.get("/api/v1/performance/benchmark/{benchmark_id}")
+async def get_benchmark_result(benchmark_id: str, user=Depends(require_admin)):
+    """Poll for benchmark results."""
+    result = _benchmark_results.get(benchmark_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+    return result
 
 
 # ============================================================================
@@ -1306,7 +1369,7 @@ def _compute_capacity(session_key: str) -> dict:
 
 
 @app.get("/api/v1/project/files")
-async def list_project_files(session_id: Optional[str] = Query(None)):
+async def list_project_files(session_id: Optional[str] = Query(None), user=Depends(get_current_user)):
     """List all project files for the session."""
     key = _get_session_key(session_id)
     files = _project_files.get(key, [])
@@ -1323,6 +1386,7 @@ async def list_project_files(session_id: Optional[str] = Query(None)):
 async def upload_project_file(
     file: UploadFile = File(...),
     session_id: Optional[str] = Query(None),
+    user=Depends(check_rate_limit),
 ):
     """Upload a file and add it to the project."""
     key = _get_session_key(session_id)
@@ -1388,7 +1452,8 @@ async def upload_project_file(
 
 
 @app.post("/api/v1/project/github/connect")
-async def connect_github_repo(req: GitHubConnectRequest, session_id: Optional[str] = Query(None)):
+async def connect_github_repo(req: GitHubConnectRequest, session_id: Optional[str] = Query(None),
+                               user=Depends(check_rate_limit)):
     """Connect a GitHub repository — fetch tree, scan key files, index content."""
     import httpx
 
@@ -1519,7 +1584,8 @@ async def connect_github_repo(req: GitHubConnectRequest, session_id: Optional[st
 
 
 @app.post("/api/v1/project/text/add")
-async def add_text_content(req: TextContentRequest, session_id: Optional[str] = Query(None)):
+async def add_text_content(req: TextContentRequest, session_id: Optional[str] = Query(None),
+                            user=Depends(check_rate_limit)):
     """Add text content as a project file."""
     key = _get_session_key(session_id)
     file_id = f"txt_{uuid.uuid4().hex[:12]}"
@@ -1554,7 +1620,8 @@ async def add_text_content(req: TextContentRequest, session_id: Optional[str] = 
 
 
 @app.post("/api/v1/project/gdrive/connect")
-async def connect_gdrive(req: GDriveConnectRequest, session_id: Optional[str] = Query(None)):
+async def connect_gdrive(req: GDriveConnectRequest, session_id: Optional[str] = Query(None),
+                          user=Depends(check_rate_limit)):
     """Link a Google Drive file/folder (metadata only — full access requires OAuth)."""
     key = _get_session_key(session_id)
     file_id = f"gd_{uuid.uuid4().hex[:12]}"
@@ -1586,7 +1653,8 @@ async def connect_gdrive(req: GDriveConnectRequest, session_id: Optional[str] = 
 
 
 @app.delete("/api/v1/project/files/{file_id}")
-async def remove_project_file(file_id: str, session_id: Optional[str] = Query(None)):
+async def remove_project_file(file_id: str, session_id: Optional[str] = Query(None),
+                                user=Depends(get_current_user)):
     """Remove a file from the project."""
     key = _get_session_key(session_id)
     files = _project_files.get(key, [])
@@ -1600,7 +1668,8 @@ async def remove_project_file(file_id: str, session_id: Optional[str] = Query(No
 
 
 @app.get("/api/v1/project/files/{file_id}/content")
-async def get_file_content(file_id: str, session_id: Optional[str] = Query(None)):
+async def get_file_content(file_id: str, session_id: Optional[str] = Query(None),
+                            user=Depends(get_current_user)):
     """Get the indexed content preview of a project file."""
     key = _get_session_key(session_id)
     for f in _project_files.get(key, []):
@@ -1652,13 +1721,19 @@ def create_app() -> FastAPI:
 
 def run_server():
     import uvicorn
+    from logging.handlers import RotatingFileHandler
 
     log_level_str = config.log_level.value.lower() if hasattr(config, 'log_level') else 'info'
     logging.basicConfig(
         level=getattr(logging, log_level_str.upper(), logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(config.log_file),
+            RotatingFileHandler(
+                config.log_file,
+                maxBytes=10 * 1024 * 1024,  # 10 MB per file
+                backupCount=5,              # Keep 5 rotated files
+                encoding='utf-8',
+            ),
             logging.StreamHandler(),
         ],
     )
