@@ -1264,9 +1264,20 @@ def _sanitize_log_line(line: str) -> str:
 
 @app.get("/api/v1/admin/logs")
 async def get_logs(level: str = "INFO", limit: int = 100, user=Depends(require_admin)):
-    """Read log entries from the log file. PII is redacted from output."""
+    """Read log entries from the log file. PII is redacted from output.
+    Returns empty list if file logging is disabled (LOG_FILE=none)."""
     limit = min(limit, 1000)
-    log_file = getattr(config, 'log_file', 'neural_assistant.log')
+
+    # Resolve effective log file path (same logic as _build_log_handlers)
+    log_file = os.environ.get('LOG_FILE', '').strip() or getattr(config, 'log_file', 'neural_assistant.log')
+    if log_file.lower() in ('none', 'off', 'stdout', ''):
+        return {
+            "success": True,
+            "logs": [],
+            "total_entries": 0,
+            "note": "File logging is disabled. Use 'docker logs neural-assistant' to view logs.",
+        }
+
     entries = []
     try:
         if os.path.exists(log_file):
@@ -1719,23 +1730,51 @@ def create_app() -> FastAPI:
     return app
 
 
+def _build_log_handlers(log_file: str) -> list:
+    """Build logging handlers: always stdout, optionally a rotating file.
+
+    File logging is opt-in via LOG_FILE env var or config.log_file.
+    Set LOG_FILE=none to disable file logging entirely (recommended for containers).
+    If the file can't be opened, falls back to stdout-only gracefully.
+    """
+    from logging.handlers import RotatingFileHandler
+
+    handlers = [logging.StreamHandler()]
+
+    # Allow explicit disable via env
+    log_file_override = os.environ.get('LOG_FILE', '').strip()
+    if log_file_override:
+        log_file = log_file_override
+
+    if log_file.lower() in ('none', 'off', 'stdout', ''):
+        return handlers
+
+    try:
+        # Ensure parent directory exists
+        log_dir = os.path.dirname(os.path.abspath(log_file))
+        os.makedirs(log_dir, exist_ok=True)
+
+        handlers.append(RotatingFileHandler(
+            log_file,
+            maxBytes=10 * 1024 * 1024,  # 10 MB per file
+            backupCount=5,
+            encoding='utf-8',
+        ))
+    except (PermissionError, OSError) as e:
+        # Graceful fallback — stdout-only is fine, especially in containers
+        print(f"WARNING: Cannot open log file '{log_file}': {e}. Logging to stdout only.")
+
+    return handlers
+
+
 def run_server():
     import uvicorn
-    from logging.handlers import RotatingFileHandler
 
     log_level_str = config.log_level.value.lower() if hasattr(config, 'log_level') else 'info'
     logging.basicConfig(
         level=getattr(logging, log_level_str.upper(), logging.INFO),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            RotatingFileHandler(
-                config.log_file,
-                maxBytes=10 * 1024 * 1024,  # 10 MB per file
-                backupCount=5,              # Keep 5 rotated files
-                encoding='utf-8',
-            ),
-            logging.StreamHandler(),
-        ],
+        handlers=_build_log_handlers(config.log_file),
     )
 
     logger.info(f"Starting server — env={config.environment.value} host={config.api_host}:{config.api_port}")
