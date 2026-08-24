@@ -1371,19 +1371,23 @@ class NeuralAssistant:
         }
 
     async def switch_provider(self, session_id: str, provider: ModelProvider) -> bool:
-        if provider in self.model_providers:
-            async with self._conversations_lock:
-                if session_id in self.conversations:
-                    self.conversations[session_id].messages.append({
-                        'role': 'system',
-                        'content': f'Switched to {provider.value} provider',
-                        'timestamp': datetime.now(),
-                    })
-                    self.conversations[session_id].active_provider = provider.value
-                    await self._persist_session(session_id)
-            logger.info(f"Session {session_id} switched to provider: {provider.value}")
-            return True
-        return False
+        if provider not in self.model_providers:
+            return False
+        # Restore session from SQLite if not in memory
+        if session_id not in self.conversations:
+            await self._restore_session(session_id)
+        async with self._conversations_lock:
+            if session_id not in self.conversations:
+                return False
+            self.conversations[session_id].messages.append({
+                'role': 'system',
+                'content': f'Switched to {provider.value} provider',
+                'timestamp': datetime.now(),
+            })
+            self.conversations[session_id].active_provider = provider.value
+            await self._persist_session(session_id)
+        logger.info(f"Session {session_id} switched to provider: {provider.value}")
+        return True
 
     async def get_available_providers(self) -> List[str]:
         return [p.value for p in self.model_providers.keys()]
