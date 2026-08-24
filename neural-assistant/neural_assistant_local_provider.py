@@ -2,8 +2,9 @@
 Neural Assistant — Local LLM Provider
 
 Direct in-process LLM inference without external servers.
-Supports two backends:
-  - LlamaCppBackend: GGUF files via llama-cpp-python (CPU + GPU)
+Supports three backends:
+  - PureGGUFBackend: GGUF files via pure Python+NumPy (no C dependencies, CPU)
+  - LlamaCppBackend: GGUF files via llama-cpp-python (CPU + GPU, optional)
   - TransformersBackend: HuggingFace models via transformers + torch (GPU preferred)
 
 Usage:
@@ -654,9 +655,15 @@ class LocalLLMProvider(LanguageModelAPI):
                     model_path = Path(self.model_name)
                     backend_type = 'transformers'
 
-            # Select backend
+            # Select backend — prefer pure Python GGUF (no C deps)
             if backend_type == 'gguf':
-                self._backend = LlamaCppBackend()
+                try:
+                    from gguf_engine import PureGGUFBackend
+                    self._backend = PureGGUFBackend()
+                    logger.info("Using PureGGUFBackend (pure Python+NumPy)")
+                except ImportError:
+                    self._backend = LlamaCppBackend()
+                    logger.info("Using LlamaCppBackend (llama-cpp-python)")
             else:
                 self._backend = TransformersBackend()
 

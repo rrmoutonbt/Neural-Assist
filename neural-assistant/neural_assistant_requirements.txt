@@ -43,8 +43,11 @@ google-generativeai>=0.5,<1.0
 # No separate package needed — OllamaProvider calls the REST API directly
 
 # Local LLM (in-process inference — no external server)
-llama-cpp-python>=0.3,<1.0
-huggingface-hub>=0.20,<1.0
+# PureGGUFBackend requires only numpy (already listed above)
+# Optional: llama-cpp-python for GPU-accelerated GGUF inference
+# llama-cpp-python>=0.3,<1.0
+# Optional: huggingface-hub for automatic model downloads
+# huggingface-hub>=0.20,<1.0
 
 # ============================================================================
 # EMBEDDINGS (optional but recommended)
