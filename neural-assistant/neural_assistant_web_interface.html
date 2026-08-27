@@ -1,0 +1,2391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Assistant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0a0a1a;
+            --bg-secondary: #111127;
+            --bg-surface: #181838;
+            --bg-elevated: #1e1e42;
+            --accent: #7c5cfc;
+            --accent-glow: rgba(124,92,252,0.25);
+            --accent-hover: #9478ff;
+            --text-primary: #eaeaff;
+            --text-secondary: #a0a0c0;
+            --text-muted: #606080;
+            --border: #2a2a50;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --error: #f87171;
+            --msg-user: linear-gradient(135deg, #7c5cfc 0%, #a78bfa 100%);
+            --msg-assistant: var(--bg-surface);
+            --radius: 12px;
+            --radius-lg: 16px;
+            --transition: 0.2s ease;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f5f5ff;
+            --bg-secondary: #eeeef8;
+            --bg-surface: #ffffff;
+            --bg-elevated: #f0f0fa;
+            --accent: #6d4de8;
+            --accent-glow: rgba(109,77,232,0.15);
+            --accent-hover: #7c5cfc;
+            --text-primary: #1a1a2e;
+            --text-secondary: #555570;
+            --text-muted: #888898;
+            --border: #d0d0e0;
+            --msg-user: linear-gradient(135deg, #6d4de8 0%, #8b6fff 100%);
+            --msg-assistant: #ffffff;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* ── Layout ── */
+        .app {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: 54px 1fr auto;
+            height: 100vh;
+            transition: grid-template-columns 0.25s ease;
+        }
+        .app.sidebar-collapsed {
+            grid-template-columns: 0px 1fr;
+        }
+        @media (max-width: 768px) {
+            .app { grid-template-columns: 1fr; }
+            .sidebar { display: none; position: fixed; top: 54px; left: 0; bottom: 0; width: 300px; z-index: 200; box-shadow: 4px 0 24px rgba(0,0,0,0.5); }
+            .sidebar.open { display: flex; }
+            .input-bar { grid-column: 1; }
+        }
+
+        /* ── Header ── */
+        .header {
+            grid-column: 1 / -1;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            z-index: 10;
+        }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo { font-size: 1.15rem; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+        .logo-sub { font-size: 0.7rem; color: var(--text-muted); margin-left: 6px; }
+        .header-right { display: flex; align-items: center; gap: 8px; }
+        .h-btn {
+            background: none; border: none; color: var(--text-secondary); cursor: pointer;
+            padding: 6px 8px; border-radius: 8px; font-size: 1rem; transition: all var(--transition);
+        }
+        .h-btn:hover { background: var(--bg-elevated); color: var(--accent); }
+        .status { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); }
+        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); transition: background var(--transition); }
+        .status-dot.ok { background: var(--success); }
+        .status-dot.err { background: var(--error); }
+        .status-dot.warn { background: var(--warning); }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            grid-row: 2 / 4;
+            grid-column: 1;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 14px;
+            gap: 18px;
+            width: 300px;
+            transition: width 0.25s ease, padding 0.25s ease, opacity 0.2s ease, border-color 0.25s ease;
+        }
+        .app.sidebar-collapsed .sidebar {
+            width: 0;
+            padding: 14px 0;
+            opacity: 0;
+            border-color: transparent;
+            pointer-events: none;
+        }
+        .sb-section {}
+        .sb-title {
+            font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px;
+            padding-left: 10px;
+        }
+
+        /* Provider list */
+        .prov-item {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 10px; border-radius: 8px; cursor: pointer;
+            transition: all var(--transition); font-size: 0.85rem;
+            border: none; margin-bottom: 2px;
+        }
+        .prov-item:hover { background: var(--bg-elevated); }
+        .prov-item.active { background: var(--accent-glow); }
+        .prov-badge {
+            font-size: 0.6rem; padding: 2px 6px; border-radius: 4px;
+            background: var(--success); color: var(--bg-primary); font-weight: 600;
+            margin-left: auto;
+        }
+        .prov-badge.down { background: var(--error); color: white; }
+
+        /* Tool / action buttons */
+        .sb-btn {
+            width: 100%; display: flex; align-items: center; gap: 10px;
+            background: none; border: none;
+            color: var(--text-secondary); padding: 8px 10px; border-radius: 8px;
+            cursor: pointer; transition: all var(--transition); font-size: 0.85rem;
+            text-align: left; margin-bottom: 1px;
+        }
+        .sb-btn:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .sb-btn .icon { font-size: 1rem; width: 20px; text-align: center; flex-shrink: 0; }
+
+        /* Capability badges */
+        .cap-row { display: flex; flex-direction: column; gap: 2px; }
+        .cap-tag {
+            font-size: 0.75rem; padding: 6px 10px; border-radius: 8px;
+            border: none; color: var(--text-secondary); transition: all var(--transition);
+            text-align: left; background: none;
+        }
+        .cap-tag:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .cap-tag.on { color: var(--success); }
+
+        /* MCP section */
+        .mcp-server {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 0.82rem; padding: 6px 10px; color: var(--text-secondary);
+            border-radius: 8px; transition: background var(--transition);
+        }
+        .mcp-server:hover { background: var(--bg-elevated); }
+        .mcp-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .mcp-dot.ok { background: var(--success); }
+        .mcp-dot.off { background: var(--text-muted); }
+        .mcp-tools-count { font-size: 0.68rem; color: var(--text-muted); margin-left: auto; }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+        /* ── Files panel ── */
+        .files-header { display: flex; align-items: center; gap: 8px; }
+        .files-add-btn {
+            width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-surface); color: var(--text-secondary); font-size: 1.1rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition); position: relative;
+        }
+        .files-add-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+        .files-dropdown {
+            display: none; position: absolute; top: 34px; right: 0; z-index: 100;
+            background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+            min-width: 200px; padding: 6px 0; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .files-dropdown.open { display: block; }
+        .files-dropdown-item {
+            display: flex; align-items: center; gap: 10px; padding: 9px 14px;
+            font-size: 0.82rem; color: var(--text-primary); cursor: pointer;
+            transition: background var(--transition); border: none; background: none; width: 100%; text-align: left;
+        }
+        .files-dropdown-item:hover { background: var(--accent-glow); }
+        .files-dropdown-item svg, .files-dropdown-item img { width: 18px; height: 18px; flex-shrink: 0; }
+        .files-capacity {
+            margin-top: 8px; margin-bottom: 6px;
+        }
+        .files-capacity-bar {
+            width: 100%; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden;
+        }
+        .files-capacity-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), #4facfe); transition: width 0.3s ease; }
+        .files-capacity-text { font-size: 0.68rem; color: var(--text-muted); margin-top: 4px; }
+        .files-grid { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+        .file-card {
+            background: none; border: none; border-radius: 8px;
+            padding: 6px 10px; cursor: default; position: relative; transition: all var(--transition);
+            overflow: hidden; display: flex; align-items: center; gap: 10px;
+        }
+        .file-card:hover { background: var(--bg-elevated); }
+        .file-card-preview {
+            width: 28px; height: 28px; border-radius: 6px; background: var(--bg-elevated);
+            display: flex; align-items: center; justify-content: center; font-size: 1rem;
+            flex-shrink: 0; overflow: hidden;
+        }
+        .file-card-name { font-size: 0.7rem; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-card-meta { font-size: 0.6rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+        .file-card-badge { font-size: 0.55rem; padding: 1px 5px; border-radius: 4px; background: var(--accent-glow); color: var(--accent); font-weight: 600; text-transform: uppercase; }
+        .file-card-remove {
+            position: absolute; top: 4px; right: 4px; width: 16px; height: 16px; border-radius: 50%;
+            background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted);
+            font-size: 0.6rem; cursor: pointer; display: none; align-items: center; justify-content: center;
+            transition: all var(--transition);
+        }
+        .file-card:hover .file-card-remove { display: flex; }
+        .file-card-remove:hover { background: var(--error); color: white; border-color: var(--error); }
+
+        /* GitHub modal */
+        .gh-modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 500; display: none; align-items: center; justify-content: center; }
+        .gh-modal-bg.open { display: flex; }
+        .gh-modal { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 24px; width: 420px; max-width: 90vw; }
+        .gh-modal h3 { font-size: 1rem; margin-bottom: 14px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+        .gh-modal input, .gh-modal select { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 0.85rem; margin-bottom: 10px; outline: none; }
+        .gh-modal input:focus { border-color: var(--accent); }
+        .gh-modal label { font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 4px; }
+        .gh-modal .gh-opts { display: flex; gap: 8px; margin-bottom: 10px; }
+        .gh-modal .gh-opts label { display: flex; align-items: center; gap: 4px; font-size: 0.78rem; color: var(--text-secondary); cursor: pointer; }
+        .gh-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+        /* Text content modal */
+        .gh-modal textarea { width: 100%; height: 120px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-primary); font-size: 0.85rem; margin-bottom: 10px; outline: none; resize: vertical; font-family: inherit; }
+        .gh-modal textarea:focus { border-color: var(--accent); }
+
+        /* ── Chat area ── */
+        .chat-area {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .messages {
+            flex: 1; overflow-y: auto; padding: 20px 24px;
+            display: flex; flex-direction: column; gap: 14px;
+        }
+
+        /* Messages */
+        .msg {
+            max-width: 80%; padding: 12px 16px; border-radius: var(--radius-lg);
+            position: relative; animation: fadeUp 0.2s ease-out;
+            line-height: 1.55; font-size: 0.92rem;
+        }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        .msg.user {
+            align-self: flex-end; background: var(--msg-user);
+            color: white; border-bottom-right-radius: 4px;
+        }
+        .msg.assistant {
+            align-self: flex-start; background: var(--msg-assistant);
+            border: 1px solid var(--border); border-bottom-left-radius: 4px;
+        }
+        .msg.system {
+            align-self: center; background: var(--bg-elevated);
+            border: 1px dashed var(--border); border-radius: 8px;
+            font-size: 0.82rem; color: var(--text-secondary); max-width: 90%; text-align: center;
+        }
+        .msg-meta {
+            font-size: 0.68rem; color: var(--text-muted); margin-top: 6px;
+            display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+        }
+        .msg-actions {
+            position: absolute; top: 6px; right: 6px; display: none; gap: 2px;
+        }
+        .msg:hover .msg-actions { display: flex; }
+        .msg-action-btn {
+            background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px;
+            color: var(--text-muted); cursor: pointer; font-size: 0.7rem; padding: 2px 5px;
+            transition: all var(--transition);
+        }
+        .msg-action-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+        /* Markdown in messages */
+        .msg pre {
+            background: #0d1117; color: #c9d1d9; padding: 10px 12px;
+            border-radius: 8px; overflow-x: auto; font-size: 0.82rem;
+            margin: 6px 0; font-family: 'Fira Code', 'Consolas', monospace;
+        }
+        .msg code {
+            background: var(--bg-elevated); padding: 1px 5px; border-radius: 3px;
+            font-size: 0.85em; font-family: 'Fira Code', 'Consolas', monospace;
+        }
+        .msg pre code { background: none; padding: 0; }
+        .msg img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
+        .msg strong { font-weight: 600; }
+        .msg em { font-style: italic; }
+        .msg a { color: var(--accent); text-decoration: underline; }
+        .msg ul, .msg ol { margin: 6px 0 6px 20px; }
+        .msg li { margin-bottom: 2px; }
+        .msg h1, .msg h2, .msg h3 { margin: 8px 0 4px; font-weight: 600; }
+        .msg h1 { font-size: 1.2em; } .msg h2 { font-size: 1.1em; } .msg h3 { font-size: 1em; }
+        .msg blockquote {
+            border-left: 3px solid var(--accent); padding: 4px 12px;
+            margin: 6px 0; color: var(--text-secondary); background: var(--bg-elevated);
+            border-radius: 0 6px 6px 0;
+        }
+        .msg hr { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+
+        /* Typing indicator */
+        .typing { display: none; padding: 12px 16px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); border-bottom-left-radius: 4px; align-self: flex-start; max-width: 70px; }
+        .typing-dots { display: flex; gap: 4px; }
+        .typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: blink 1.4s infinite; }
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes blink { 0%,60%,100%{opacity:0.3} 30%{opacity:1} }
+
+        /* ── Input bar ── */
+        .input-bar {
+            grid-column: 2; background: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+            padding: 12px 16px; display: flex; gap: 8px; align-items: flex-end;
+        }
+        .input-wrap {
+            flex: 1; background: var(--bg-surface); border: 1.5px solid var(--border);
+            border-radius: 22px; display: flex; align-items: center; padding: 0 4px 0 16px;
+            transition: border-color var(--transition);
+        }
+        .input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+        .chat-input {
+            flex: 1; background: none; border: none; color: var(--text-primary);
+            font-size: 0.92rem; padding: 10px 0; outline: none; font-family: inherit;
+        }
+        .chat-input::placeholder { color: var(--text-muted); }
+        .attach-btn {
+            background: none; border: none; color: var(--text-muted); cursor: pointer;
+            font-size: 1.1rem; padding: 6px; border-radius: 50%; transition: all var(--transition);
+        }
+        .attach-btn:hover { color: var(--accent); background: var(--accent-glow); }
+        .send-btn {
+            background: var(--accent); border: none; border-radius: 50%;
+            width: 40px; height: 40px; cursor: pointer; display: flex;
+            align-items: center; justify-content: center; color: white;
+            font-size: 1rem; transition: all var(--transition); flex-shrink: 0;
+        }
+        .send-btn:hover { background: var(--accent-hover); transform: scale(1.05); }
+        .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+        /* ── Metrics panel ── */
+        .metrics-panel {
+            position: fixed; top: 62px; right: 16px; background: var(--bg-surface);
+            border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px; min-width: 220px; z-index: 50;
+            transform: translateX(120%); transition: transform 0.3s ease;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        .metrics-panel.visible { transform: translateX(0); }
+        .metric-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.82rem; }
+        .metric-val { color: var(--accent); font-weight: 600; }
+
+        /* ── Login overlay ── */
+        .login-overlay {
+            position: fixed; inset: 0; background: var(--bg-primary);
+            z-index: 500; display: flex; align-items: center; justify-content: center;
+        }
+        .login-overlay.hidden { display: none; }
+        .login-box {
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); padding: 32px; width: 90%; max-width: 380px;
+            text-align: center;
+        }
+        .login-box h2 { color: var(--accent); margin-bottom: 4px; font-size: 1.4rem; }
+        .login-box p { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px; }
+        .login-field {
+            width: 100%; background: var(--bg-elevated); border: 1.5px solid var(--border);
+            border-radius: 10px; padding: 10px 14px; color: var(--text-primary);
+            font-size: 0.92rem; margin-bottom: 10px; outline: none; transition: border-color var(--transition);
+        }
+        .login-field:focus { border-color: var(--accent); }
+        .login-submit {
+            width: 100%; background: var(--accent); color: white; border: none;
+            border-radius: 10px; padding: 11px; font-size: 0.95rem; cursor: pointer;
+            font-weight: 600; margin-top: 6px; transition: background var(--transition);
+        }
+        .login-submit:hover { background: var(--accent-hover); }
+        .login-skip {
+            display: inline-block; margin-top: 12px; color: var(--text-muted);
+            font-size: 0.8rem; cursor: pointer; text-decoration: underline;
+        }
+        .login-skip:hover { color: var(--text-secondary); }
+
+        /* ── Modal ── */
+        .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; align-items: center; justify-content: center; }
+        .modal-bg.open { display: flex; }
+        .modal {
+            background: var(--bg-surface); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); padding: 24px; width: 90%; max-width: 460px;
+        }
+        .modal h3 { color: var(--accent); margin-bottom: 14px; }
+        .modal-input {
+            width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 8px; padding: 10px 14px; color: var(--text-primary);
+            font-size: 0.92rem; margin-bottom: 10px; outline: none;
+        }
+        .modal-input:focus { border-color: var(--accent); }
+        .modal-row { display: flex; gap: 8px; margin-bottom: 10px; }
+        .modal-row select { flex: 1; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 8px; color: var(--text-primary); font-size: 0.85rem; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+        .btn-primary { background: var(--accent); color: white; border: none; border-radius: 8px; padding: 8px 20px; cursor: pointer; font-size: 0.88rem; transition: background var(--transition); }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-ghost { background: none; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 0.88rem; transition: all var(--transition); }
+        .btn-ghost:hover { border-color: var(--text-secondary); }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+        /* ── Util ── */
+        .hidden { display: none !important; }
+
+        /* ── Admin Panel (slide-out drawer) ── */
+        .admin-panel {
+            position: fixed; top: 0; right: 0; width: 560px; max-width: 100vw; height: 100vh;
+            background: var(--bg-secondary); border-left: 1px solid var(--border);
+            z-index: 400; transform: translateX(100%); transition: transform 0.3s ease;
+            display: flex; flex-direction: column; box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+        }
+        .admin-panel.open { transform: translateX(0); }
+        .admin-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .admin-header h3 { font-size: 1rem; color: var(--accent); margin: 0; }
+        .admin-close {
+            background: none; border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text-secondary); cursor: pointer; padding: 4px 10px; font-size: 0.8rem;
+        }
+        .admin-close:hover { border-color: var(--error); color: var(--error); }
+        .admin-tabs {
+            display: flex; border-bottom: 1px solid var(--border); padding: 0 18px; flex-shrink: 0;
+        }
+        .admin-tab {
+            padding: 10px 14px; font-size: 0.78rem; color: var(--text-muted); cursor: pointer;
+            border-bottom: 2px solid transparent; transition: all var(--transition);
+            background: none; border-top: none; border-left: none; border-right: none;
+        }
+        .admin-tab:hover { color: var(--text-primary); }
+        .admin-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .admin-content { flex: 1; overflow-y: auto; padding: 18px; }
+        .admin-tab-pane { display: none; }
+        .admin-tab-pane.active { display: block; }
+        .admin-metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+        .admin-metric-card {
+            background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 12px; text-align: center;
+        }
+        .admin-metric-card .label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .admin-metric-card .value { font-size: 1.3rem; font-weight: 700; color: var(--accent); margin-top: 4px; }
+        .admin-sub-title { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; margin: 14px 0 8px; }
+        .admin-action-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+        .admin-action-btn {
+            padding: 8px 16px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-surface); color: var(--text-secondary); cursor: pointer;
+            font-size: 0.82rem; transition: all var(--transition);
+        }
+        .admin-action-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .admin-action-btn.danger:hover { background: rgba(248,113,113,0.15); border-color: var(--error); color: var(--error); }
+        .admin-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .provider-health-item {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; border-radius: 8px; background: var(--bg-surface);
+            border: 1px solid var(--border); margin-bottom: 6px; font-size: 0.82rem;
+        }
+        .ph-status {
+            padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;
+        }
+        .ph-status.healthy { background: rgba(52,211,153,0.15); color: var(--success); }
+        .ph-status.unhealthy { background: rgba(248,113,113,0.15); color: var(--error); }
+
+        /* Admin Logs */
+        .admin-log-controls { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+        .admin-log-controls select, .admin-log-controls input {
+            background: var(--bg-surface); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text-primary); padding: 6px 10px; font-size: 0.8rem; outline: none;
+        }
+        .log-entries {
+            background: #0d1117; border-radius: 8px; padding: 10px; font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.72rem; max-height: 60vh; overflow-y: auto; line-height: 1.6;
+        }
+        .log-entry { color: #c9d1d9; word-break: break-all; padding: 1px 0; }
+        .log-entry.warn { color: var(--warning); }
+        .log-entry.error { color: var(--error); }
+        .log-entry.info { color: #58a6ff; }
+
+        /* Benchmark */
+        .bench-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 10px; }
+        .bench-table th, .bench-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+        .bench-table th { color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.5px; }
+        .bench-summary { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+        .bench-summary .stat { background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; font-size: 0.8rem; }
+        .bench-summary .stat strong { color: var(--accent); }
+
+        /* Tool Audit */
+        .audit-entry {
+            padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 0.8rem;
+        }
+        .audit-entry:last-child { border-bottom: none; }
+        .audit-tool-name { color: var(--accent); font-weight: 600; }
+        .audit-timestamp { color: var(--text-muted); font-size: 0.7rem; float: right; }
+        .audit-status {
+            display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 0.65rem;
+            font-weight: 600; margin-left: 6px;
+        }
+        .audit-status.allowed { background: rgba(52,211,153,0.15); color: var(--success); }
+        .audit-status.denied { background: rgba(248,113,113,0.15); color: var(--error); }
+        .policy-item {
+            padding: 8px 12px; border-radius: 8px; background: var(--bg-surface);
+            border: 1px solid var(--border); margin-bottom: 6px; font-size: 0.82rem;
+        }
+
+        /* Code Execution Modal */
+        .code-textarea {
+            width: 100%; height: 200px; background: #0d1117; border: 1px solid var(--border);
+            border-radius: 8px; padding: 12px; color: #c9d1d9; font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85rem; resize: vertical; outline: none; margin-bottom: 10px;
+        }
+        .code-textarea:focus { border-color: var(--accent); }
+        .code-output-box {
+            background: #0d1117; border-radius: 8px; padding: 12px; margin-top: 10px;
+            font-family: 'Fira Code', monospace; font-size: 0.82rem; max-height: 250px;
+            overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+        }
+        .code-output-box.success { color: var(--success); border-left: 3px solid var(--success); }
+        .code-output-box.error { color: var(--error); border-left: 3px solid var(--error); }
+
+        /* History/Analysis Panel */
+        .history-panel {
+            position: fixed; top: 0; right: 0; width: 480px; max-width: 100vw; height: 100vh;
+            background: var(--bg-secondary); border-left: 1px solid var(--border);
+            z-index: 350; transform: translateX(100%); transition: transform 0.3s ease;
+            display: flex; flex-direction: column; box-shadow: -4px 0 24px rgba(0,0,0,0.3);
+        }
+        .history-panel.open { transform: translateX(0); }
+        .history-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+        }
+        .history-header h3 { font-size: 1rem; color: var(--accent); margin: 0; }
+        .history-body { flex: 1; overflow-y: auto; padding: 14px 18px; }
+        .history-msg {
+            padding: 10px 14px; border-radius: 10px; margin-bottom: 8px;
+            font-size: 0.85rem; line-height: 1.5; word-break: break-word;
+        }
+        .history-msg.user-msg { background: var(--accent-glow); border-left: 3px solid var(--accent); }
+        .history-msg.assistant-msg { background: var(--bg-surface); border: 1px solid var(--border); }
+        .history-msg.system-msg { background: var(--bg-elevated); border: 1px dashed var(--border); color: var(--text-muted); font-size: 0.8rem; }
+        .history-role { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600; }
+        .history-actions { display: flex; gap: 8px; padding: 10px 18px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+        /* Analysis section */
+        .analysis-card {
+            background: var(--bg-surface); border: 1px solid var(--border); border-radius: 10px;
+            padding: 14px; margin-bottom: 10px;
+        }
+        .analysis-card h4 { font-size: 0.85rem; color: var(--accent); margin: 0 0 8px; }
+        .analysis-card p { font-size: 0.82rem; color: var(--text-secondary); margin: 4px 0; }
+        .analysis-bar { height: 6px; border-radius: 3px; background: var(--border); margin-top: 6px; overflow: hidden; }
+        .analysis-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--success)); }
+
+        /* MCP add/remove */
+        .mcp-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .mcp-add-btn {
+            width: 22px; height: 22px; border-radius: 6px; border: 1px solid var(--border);
+            background: var(--bg-surface); color: var(--text-muted); font-size: 0.9rem;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all var(--transition);
+        }
+        .mcp-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+        .mcp-remove-btn {
+            font-size: 0.75rem; color: var(--text-muted); cursor: pointer; margin-left: 6px;
+            opacity: 0; transition: opacity var(--transition); background: none; border: none;
+        }
+        .mcp-server:hover .mcp-remove-btn { opacity: 1; }
+        .mcp-remove-btn:hover { color: var(--error); }
+
+        /* File content preview modal */
+        .file-preview-content {
+            background: #0d1117; border-radius: 8px; padding: 12px; font-family: 'Fira Code', monospace;
+            font-size: 0.8rem; color: #c9d1d9; max-height: 400px; overflow-y: auto;
+            white-space: pre-wrap; word-break: break-word; line-height: 1.5;
+        }
+
+        /* Sidebar section divider */
+        .sb-divider { height: 1px; background: var(--border); margin: 6px 10px; }
+    </style>
+</head>
+<body>
+    <!-- Login overlay -->
+    <div class="login-overlay" id="loginOverlay">
+        <div class="login-box">
+            <h2>Neural Assistant</h2>
+            <p>Sign in to start your session</p>
+            <input class="login-field" id="loginUser" type="text" placeholder="Username" autocomplete="username">
+            <input class="login-field" id="loginPass" type="password" placeholder="Password" autocomplete="current-password"
+                   onkeypress="if(event.key==='Enter')doLogin()">
+            <button class="login-submit" onclick="doLogin()">Sign In</button>
+            <div class="login-skip" onclick="skipLogin()">Continue without auth</div>
+        </div>
+    </div>
+
+    <!-- Main app -->
+    <div class="app">
+        <header class="header">
+            <div class="header-left">
+                <button class="h-btn" onclick="toggleSidebar()" title="Menu">&#9776;</button>
+                <span class="logo">Neural Assistant</span>
+                <span class="logo-sub">v2.0</span>
+            </div>
+            <div class="header-right">
+                <div class="status">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Connecting...</span>
+                </div>
+                <button class="h-btn" onclick="toggleMetrics()" title="Metrics">&#9776;&#65039;</button>
+                <button class="h-btn" id="themeBtn" onclick="toggleTheme()" title="Toggle theme">&#9790;</button>
+                <a href="/programs.html" class="h-btn exit-btn" title="Back to Programs" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;color:var(--text-secondary);border-left:1px solid var(--border);margin-left:4px;padding-left:12px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    Exit
+                </a>
+            </div>
+        </header>
+
+        <aside class="sidebar" id="sidebar">
+            <!-- Capabilities -->
+            <div class="sb-section">
+                <div class="sb-title">Capabilities</div>
+                <div class="cap-row" id="capBadges"><span class="cap-tag">Loading...</span></div>
+            </div>
+
+            <!-- Providers -->
+            <div class="sb-section">
+                <div class="sb-title">Providers</div>
+                <div id="providerList"><div class="prov-item" style="color:var(--text-muted)">Connecting...</div></div>
+            </div>
+
+            <!-- MCP Servers -->
+            <div class="sb-section" id="mcpSection">
+                <div class="mcp-header">
+                    <div class="sb-title" style="margin-bottom:0;">MCP Servers</div>
+                    <button class="mcp-add-btn" onclick="openMCPAddModal()" title="Add MCP Server">+</button>
+                </div>
+                <div id="mcpList"><span style="font-size:0.8rem;color:var(--text-muted)">No servers connected</span></div>
+            </div>
+
+            <!-- Actions -->
+            <div class="sb-section">
+                <div class="sb-title">Actions</div>
+                <button class="sb-btn" onclick="sendCompact()"><span class="icon">&#128230;</span> Compact Context</button>
+                <button class="sb-btn" onclick="openImageGen()"><span class="icon">&#127912;</span> Generate Image</button>
+                <button class="sb-btn" onclick="document.getElementById('transcribeInput').click()"><span class="icon">&#127908;</span> Transcribe</button>
+                <input type="file" id="transcribeInput" class="hidden" accept=".mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.avi,.mov,.mkv,.wmv,.webm" onchange="handleTranscribe(event)">
+                <button class="sb-btn" onclick="openTool('code_analysis')"><span class="icon">&#128269;</span> Analyze Code</button>
+                <button class="sb-btn" onclick="openTool('math_computation')"><span class="icon">&#129518;</span> Solve Math</button>
+                <button class="sb-btn" onclick="openCodeExecModal()"><span class="icon">&#9654;</span> Execute Code</button>
+                <button class="sb-btn" onclick="openVisionModal()"><span class="icon">&#128065;</span> Vision Analysis</button>
+                <button class="sb-btn" onclick="exportConversation()"><span class="icon">&#128228;</span> Export Chat</button>
+                <button class="sb-btn" onclick="exportServerSide()"><span class="icon">&#128230;</span> Export (Server)</button>
+                <div class="sb-divider"></div>
+                <button class="sb-btn" onclick="openHistoryPanel()"><span class="icon">&#128214;</span> Conversation History</button>
+                <button class="sb-btn" onclick="openAnalysisPanel()"><span class="icon">&#128200;</span> Conversation Analysis</button>
+                <button class="sb-btn" onclick="openAdminPanel()"><span class="icon">&#9881;</span> Admin Panel</button>
+            </div>
+
+            <!-- Files -->
+            <div class="sb-section">
+                <div class="files-header">
+                    <div class="sb-title" style="margin-bottom:0;">Files</div>
+                    <div class="files-add-wrap" style="position:relative;">
+                        <button class="files-add-btn" onclick="toggleFilesDropdown(event)" title="Add file or source">+</button>
+                        <div class="files-dropdown" id="filesDropdown">
+                            <button class="files-dropdown-item" onclick="document.getElementById('fileInput').click()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                                Upload from device
+                            </button>
+                            <button class="files-dropdown-item" onclick="openTextContentModal()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                Add text content
+                            </button>
+                            <button class="files-dropdown-item" onclick="openGitHubModal()">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                                GitHub
+                            </button>
+                            <button class="files-dropdown-item" onclick="openGoogleDriveModal()">
+                                <svg viewBox="0 0 24 24" width="18" height="18"><path d="M7.71 3.5L1.15 15l3.43 5.96h6.58L7.71 3.5z" fill="#0066DA"/><path d="M16.29 3.5H7.71l3.44 5.96 5.14 8.92 3.43-5.96L16.29 3.5z" fill="#00AC47"/><path d="M1.15 15l3.43 5.96h13.84l3.43-5.96H1.15z" fill="#EA4335"/><path d="M11.15 9.46L7.71 3.5l-6.56 11.5h6.87l3.13-5.54z" fill="#00832D"/><path d="M16.29 3.5l-5.14 5.96 3.13 5.54h6.87L16.29 3.5z" fill="#2684FC"/><path d="M8.02 15h7.96l-3.13 5.96H11.15L8.02 15z" fill="#FFBA00"/></svg>
+                                Google Drive
+                            </button>
+                        </div>
+                    </div>
+                    <input type="file" id="fileInput" class="hidden" accept=".txt,.md,.py,.js,.ts,.html,.css,.json,.xml,.yaml,.yml,.jpg,.jpeg,.png,.gif,.bmp,.webp,.pdf,.docx,.xlsx,.csv,.mp3,.wav,.flac,.aac,.ogg,.m4a,.mp4,.avi,.mov,.mkv,.wmv,.webm" multiple onchange="handleFileUpload(event)">
+                </div>
+                <div class="files-capacity">
+                    <div class="files-capacity-bar"><div class="files-capacity-fill" id="filesCapFill" style="width:0%"></div></div>
+                    <div class="files-capacity-text">
+                        <span id="filesCapText">0% of project capacity used</span>
+                        <span id="filesIndexDot" style="display:none;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:8px;vertical-align:middle;animation:pulse 1.5s infinite;"></span>
+                        <span id="filesIndexText" style="display:none;font-size:0.65rem;color:var(--accent);margin-left:3px;">Indexing</span>
+                    </div>
+                </div>
+                <div class="files-grid" id="filesGrid"></div>
+            </div>
+        </aside>
+
+        <main class="chat-area">
+            <div class="messages" id="chatMessages">
+                <div class="msg assistant">
+                    <div class="msg-content">Welcome to <strong>Neural Assistant</strong>. Ask anything, generate images, run code, upload files, or use <code>/compact</code> to compress context.</div>
+                    <div class="msg-meta"><span>Neural Assistant</span><span>Just now</span></div>
+                </div>
+            </div>
+            <div class="typing" id="typingIndicator">
+                <div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>
+            </div>
+        </main>
+
+        <div class="input-bar">
+            <div class="input-wrap">
+                <input type="text" class="chat-input" id="messageInput"
+                       placeholder="Message Neural Assistant..."
+                       onkeydown="handleInputKey(event)">
+                <button class="attach-btn" onclick="document.getElementById('fileInput').click()" title="Attach file">&#128206;</button>
+            </div>
+            <button class="send-btn" id="sendBtn" onclick="sendMessage()" title="Send (Enter)">&#10148;</button>
+        </div>
+    </div>
+
+    <!-- Metrics panel -->
+    <div class="metrics-panel" id="metricsPanel">
+        <div style="font-weight:600;color:var(--accent);margin-bottom:10px;">Live Metrics</div>
+        <div class="metric-row"><span>Tokens</span><span class="metric-val" id="mTokens">0</span></div>
+        <div class="metric-row"><span>Avg Response</span><span class="metric-val" id="mAvgTime">0ms</span></div>
+        <div class="metric-row"><span>Safety Score</span><span class="metric-val" id="mSafety">1.00</span></div>
+        <div class="metric-row"><span>Sessions</span><span class="metric-val" id="mSessions">-</span></div>
+        <div class="metric-row"><span>Requests</span><span class="metric-val" id="mRequests">-</span></div>
+        <div class="metric-row"><span>Provider</span><span class="metric-val" id="mProvider">-</span></div>
+        <div class="metric-row"><span>MCP Tools</span><span class="metric-val" id="mMcpTools">0</span></div>
+    </div>
+
+    <!-- Admin Panel (slide-out) -->
+    <div class="admin-panel" id="adminPanel">
+        <div class="admin-header">
+            <h3>Admin Panel</h3>
+            <button class="admin-close" onclick="closeAdminPanel()">Close</button>
+        </div>
+        <div class="admin-tabs">
+            <button class="admin-tab active" onclick="switchAdminTab('overview')">Overview</button>
+            <button class="admin-tab" onclick="switchAdminTab('logs')">Logs</button>
+            <button class="admin-tab" onclick="switchAdminTab('benchmark')">Benchmark</button>
+            <button class="admin-tab" onclick="switchAdminTab('tools')">Tools</button>
+        </div>
+        <div class="admin-content">
+            <!-- Overview Tab -->
+            <div class="admin-tab-pane active" id="adminOverview">
+                <div class="admin-metric-grid" id="adminMetricGrid">
+                    <div class="admin-metric-card"><div class="label">Uptime</div><div class="value" id="amUptime">--</div></div>
+                    <div class="admin-metric-card"><div class="label">Sessions</div><div class="value" id="amSessions">--</div></div>
+                    <div class="admin-metric-card"><div class="label">Total Requests</div><div class="value" id="amRequests">--</div></div>
+                    <div class="admin-metric-card"><div class="label">Failed Requests</div><div class="value" id="amFailed">--</div></div>
+                    <div class="admin-metric-card"><div class="label">Avg Response</div><div class="value" id="amAvgTime">--</div></div>
+                    <div class="admin-metric-card"><div class="label">WebSockets</div><div class="value" id="amWS">--</div></div>
+                </div>
+                <div class="admin-sub-title">Configuration</div>
+                <div id="adminConfig" style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:14px;">Loading...</div>
+                <div class="admin-sub-title">Provider Health</div>
+                <div id="adminProviderHealth">Loading...</div>
+                <div class="admin-sub-title" style="margin-top:18px;">Actions</div>
+                <div class="admin-action-row">
+                    <button class="admin-action-btn" onclick="adminReloadConfig()">Reload Config</button>
+                    <button class="admin-action-btn" onclick="adminOptimize()">Optimize System</button>
+                    <button class="admin-action-btn danger" onclick="adminCleanupSessions()">Cleanup Sessions</button>
+                </div>
+            </div>
+            <!-- Logs Tab -->
+            <div class="admin-tab-pane" id="adminLogs">
+                <div class="admin-log-controls">
+                    <select id="logLevel" onchange="loadAdminLogs()">
+                        <option value="DEBUG">DEBUG</option>
+                        <option value="INFO" selected>INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR</option>
+                    </select>
+                    <input type="number" id="logLimit" value="100" min="10" max="1000" style="width:70px;" title="Max entries">
+                    <button class="admin-action-btn" onclick="loadAdminLogs()">Refresh</button>
+                </div>
+                <div class="log-entries" id="logEntries"><span style="color:var(--text-muted);">Click Refresh to load logs</span></div>
+            </div>
+            <!-- Benchmark Tab -->
+            <div class="admin-tab-pane" id="adminBenchmark">
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">Run a performance benchmark across 5 test scenarios to measure response times and provider health.</p>
+                <div class="admin-action-row">
+                    <button class="admin-action-btn" id="benchRunBtn" onclick="runBenchmark()">Run Benchmark</button>
+                </div>
+                <div id="benchResults"></div>
+            </div>
+            <!-- Tools Tab -->
+            <div class="admin-tab-pane" id="adminTools">
+                <div class="admin-sub-title">Tool Policies</div>
+                <div id="toolPolicies" style="margin-bottom:16px;">Loading...</div>
+                <div class="admin-sub-title">Recent Tool Audit</div>
+                <div class="admin-action-row">
+                    <button class="admin-action-btn" onclick="loadToolAudit()">Refresh Audit Log</button>
+                </div>
+                <div id="toolAuditLog">Click Refresh to load audit entries</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Panel (slide-out) -->
+    <div class="history-panel" id="historyPanel">
+        <div class="history-header">
+            <h3 id="historyTitle">Conversation History</h3>
+            <button class="admin-close" onclick="closeHistoryPanel()">Close</button>
+        </div>
+        <div class="history-body" id="historyBody">
+            <p style="color:var(--text-muted);font-size:0.85rem;">No session active. Send a message first.</p>
+        </div>
+        <div class="history-actions">
+            <button class="admin-action-btn" onclick="loadConversationHistory()">Refresh</button>
+            <button class="admin-action-btn" onclick="exportServerSide('json')">Export JSON</button>
+            <button class="admin-action-btn" onclick="exportServerSide('markdown')">Export Markdown</button>
+        </div>
+    </div>
+
+    <!-- Image modal -->
+    <div class="modal-bg" id="imageModal">
+        <div class="modal">
+            <h3>Generate Image</h3>
+            <input class="modal-input" id="imgPrompt" placeholder="Describe the image you want...">
+            <div class="modal-row">
+                <select id="imgSize">
+                    <option value="1024x1024">Square (1024)</option>
+                    <option value="1792x1024">Landscape</option>
+                    <option value="1024x1792">Portrait</option>
+                </select>
+                <select id="imgProvider">
+                    <option value="auto">Auto</option>
+                    <option value="dall-e-3">DALL-E 3</option>
+                    <option value="stability-ai">Stability AI</option>
+                    <option value="native">Local GPU</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeImageGen()">Cancel</button>
+                <button class="btn-primary" onclick="submitImageGen()">Generate</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GitHub Modal -->
+    <div class="gh-modal-bg" id="githubModal">
+        <div class="gh-modal">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                Connect GitHub Repository
+            </h3>
+            <label>Repository URL or owner/repo</label>
+            <input id="ghRepoUrl" placeholder="https://github.com/owner/repo or owner/repo">
+            <label>Branch (optional)</label>
+            <input id="ghBranch" placeholder="main">
+            <div class="gh-opts">
+                <label><input type="checkbox" id="ghScanAll" checked> Scan all files</label>
+                <label><input type="checkbox" id="ghIncludeDocs"> Include docs/README</label>
+            </div>
+            <label>Access Token (optional, for private repos)</label>
+            <input id="ghToken" type="password" placeholder="ghp_xxxxxxxxxxxx">
+            <div class="gh-footer">
+                <button class="btn-ghost" onclick="closeGitHubModal()">Cancel</button>
+                <button class="btn-primary" onclick="attachGitHub()">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Text Content Modal -->
+    <div class="gh-modal-bg" id="textContentModal">
+        <div class="gh-modal">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Add Text Content
+            </h3>
+            <label>Title</label>
+            <input id="textTitle" placeholder="e.g. API documentation, notes...">
+            <label>Content</label>
+            <textarea id="textContent" placeholder="Paste or type text content here..."></textarea>
+            <div class="gh-footer">
+                <button class="btn-ghost" onclick="closeTextContentModal()">Cancel</button>
+                <button class="btn-primary" onclick="attachTextContent()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Drive Modal -->
+    <div class="gh-modal-bg" id="googleDriveModal">
+        <div class="gh-modal">
+            <h3>
+                <svg width="20" height="20" viewBox="0 0 24 24"><path d="M7.71 3.5L1.15 15l3.43 5.96h6.58L7.71 3.5z" fill="#0066DA"/><path d="M16.29 3.5H7.71l3.44 5.96 5.14 8.92 3.43-5.96L16.29 3.5z" fill="#00AC47"/><path d="M1.15 15l3.43 5.96h13.84l3.43-5.96H1.15z" fill="#EA4335"/></svg>
+                Connect Google Drive
+            </h3>
+            <label>Shared link or file URL</label>
+            <input id="gdUrl" placeholder="https://drive.google.com/file/d/... or folder link">
+            <div class="gh-opts">
+                <label><input type="checkbox" id="gdRecursive" checked> Include subfolders</label>
+            </div>
+            <div class="gh-footer">
+                <button class="btn-ghost" onclick="closeGoogleDriveModal()">Cancel</button>
+                <button class="btn-primary" onclick="attachGoogleDrive()">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Code Execution Modal -->
+    <div class="modal-bg" id="codeExecModal">
+        <div class="modal" style="max-width:600px;">
+            <h3>Execute Code</h3>
+            <div class="modal-row">
+                <select id="codeExecLang">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="bash">Bash</option>
+                </select>
+            </div>
+            <textarea class="code-textarea" id="codeExecInput" placeholder="Enter code to execute..."></textarea>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeCodeExecModal()">Cancel</button>
+                <button class="btn-primary" id="codeExecRunBtn" onclick="runCodeExec()">Run</button>
+            </div>
+            <div id="codeExecOutput"></div>
+        </div>
+    </div>
+
+    <!-- Vision Analysis Modal -->
+    <div class="modal-bg" id="visionModal">
+        <div class="modal">
+            <h3>Vision Analysis</h3>
+            <p style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:12px;">Upload an image and provide a prompt for AI vision analysis.</p>
+            <input type="file" id="visionFileInput" accept=".jpg,.jpeg,.png,.gif,.bmp,.webp" class="modal-input" style="padding:8px;">
+            <input class="modal-input" id="visionPrompt" placeholder="Describe what you want to know about this image..." value="Describe this image in detail.">
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeVisionModal()">Cancel</button>
+                <button class="btn-primary" id="visionRunBtn" onclick="runVisionAnalysis()">Analyze</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MCP Add Server Modal -->
+    <div class="gh-modal-bg" id="mcpAddModal">
+        <div class="gh-modal">
+            <h3>Add MCP Server</h3>
+            <label>Server Name</label>
+            <input id="mcpName" placeholder="e.g. my-server">
+            <label>Transport</label>
+            <select id="mcpTransport" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-primary);font-size:0.85rem;margin-bottom:10px;">
+                <option value="stdio">stdio</option>
+                <option value="sse">SSE</option>
+                <option value="streamable-http">Streamable HTTP</option>
+            </select>
+            <label>Command (for stdio)</label>
+            <input id="mcpCommand" placeholder="e.g. npx, python, node">
+            <label>Args (comma-separated)</label>
+            <input id="mcpArgs" placeholder="e.g. -m,mcp_server">
+            <label>URL (for SSE/HTTP)</label>
+            <input id="mcpUrl" placeholder="http://localhost:3001/sse">
+            <label>Timeout (seconds)</label>
+            <input id="mcpTimeout" type="number" value="30" min="1" max="300">
+            <div class="gh-footer">
+                <button class="btn-ghost" onclick="closeMCPAddModal()">Cancel</button>
+                <button class="btn-primary" onclick="addMCPServer()">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Conversation Analysis Modal -->
+    <div class="modal-bg" id="analysisModal">
+        <div class="modal" style="max-width:540px;max-height:80vh;overflow-y:auto;">
+            <h3>Conversation Analysis</h3>
+            <div id="analysisContent"><p style="color:var(--text-muted);">Loading analysis...</p></div>
+            <div class="modal-footer" style="margin-top:14px;">
+                <button class="btn-ghost" onclick="closeAnalysisPanel()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Content Preview Modal -->
+    <div class="modal-bg" id="filePreviewModal">
+        <div class="modal" style="max-width:600px;">
+            <h3 id="filePreviewTitle">File Preview</h3>
+            <div class="file-preview-content" id="filePreviewContent">Loading...</div>
+            <div style="margin-top:8px;font-size:0.75rem;color:var(--text-muted);" id="filePreviewMeta"></div>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeFilePreview()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const API_BASE = (window.location.origin || 'http://localhost:8000') + '/neural';
+    const WS_BASE = API_BASE.replace(/^http/, 'ws');
+
+    // ── State ──
+    let authToken = null;
+    let sessionId = null;
+    let activeProvider = null;
+    let ws = null;
+    let wsRetries = 0;
+    let messageHistory = [];
+    let metrics = { tokens: 0, totalTime: 0, count: 0, safety: 1.0 };
+    let sending = false;
+    let appInitialized = false;
+    let streamingMsgEl = null;
+    let streamingBuffer = '';
+    let streamConsumedTurn = false;
+
+    // ── Auth ──
+    async function doLogin() {
+        const user = document.getElementById('loginUser').value.trim();
+        const pass = document.getElementById('loginPass').value;
+        if (!user) return;
+        try {
+            const r = await fetch(`${API_BASE}/api/v1/auth/token`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+            if (r.ok) {
+                authToken = (await r.json()).access_token;
+                document.getElementById('loginOverlay').classList.add('hidden');
+                if (appInitialized) {
+                    // Already ran init without a token — re-run auth-dependent pieces with the new token
+                    await reauthWithToken();
+                } else {
+                    initApp();
+                }
+            } else {
+                alert('Invalid credentials');
+            }
+        } catch (e) {
+            alert('Cannot reach server. Is it running?');
+        }
+    }
+
+    function skipLogin() {
+        document.getElementById('loginOverlay').classList.add('hidden');
+        initApp();
+    }
+
+    async function reauthWithToken() {
+        // Reopen the websocket so the new token is sent on onopen
+        try { if (ws) { ws.onclose = null; ws.close(); } } catch (_) {}
+        ws = null;
+        connectWS();
+        // Refresh auth-dependent UI state
+        try {
+            const health = await apiFetch('/health');
+            if (health.status === 'healthy') setStatus('Connected', 'ok');
+            else setStatus(health.status || 'Degraded', 'warn');
+        } catch (_) { setStatus('Offline', 'err'); }
+        try { const p = await apiFetch('/api/v1/providers'); if (p.success) { activeProvider = p.active_provider; renderProviders(p); } } catch (_) {}
+        try { const c = await apiFetch('/api/v1/capabilities'); renderCaps(c); } catch (_) {}
+        try {
+            const m = await apiFetch('/api/v1/mcp/servers'); renderMCP(m.servers || []);
+            const t = await apiFetch('/api/v1/mcp/tools'); document.getElementById('mMcpTools').textContent = t.count || 0;
+        } catch (_) {}
+        refreshMetrics();
+        loadProjectFiles();
+    }
+
+    // ── App init ──
+    async function initApp() {
+        if (appInitialized) return;
+        appInitialized = true;
+        setStatus('Connecting...', 'warn');
+        try {
+            const health = await apiFetch('/health');
+            if (health.status === 'healthy') setStatus('Connected', 'ok');
+            else setStatus(health.status || 'Degraded', 'warn');
+        } catch (e) {
+            setStatus('Offline', 'err');
+        }
+
+        // Providers
+        try {
+            const p = await apiFetch('/api/v1/providers');
+            if (p.success) { activeProvider = p.active_provider; renderProviders(p); }
+        } catch (e) {}
+
+        // Capabilities
+        try {
+            const c = await apiFetch('/api/v1/capabilities');
+            renderCaps(c);
+        } catch (e) {}
+
+        // MCP
+        try {
+            const m = await apiFetch('/api/v1/mcp/servers');
+            renderMCP(m.servers || []);
+            const t = await apiFetch('/api/v1/mcp/tools');
+            document.getElementById('mMcpTools').textContent = t.count || 0;
+        } catch (e) {}
+
+        refreshMetrics();
+        setInterval(refreshMetrics, 15000);
+        loadProjectFiles();
+        startFilesPolling();
+        connectWS();
+    }
+
+    // ── API ──
+    async function apiFetch(path, opts = {}) {
+        const headers = { 'Content-Type': 'application/json', ...opts.headers };
+        if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+        const r = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+        if (!r.ok) {
+            const t = await r.text().catch(() => 'Unknown error');
+            throw new Error(`${r.status}: ${t}`);
+        }
+        return r.json();
+    }
+
+    // ── WebSocket ──
+    function connectWS() {
+        try {
+            if (ws) { try { ws.onclose = null; ws.close(); } catch (_) {} ws = null; }
+            const url = `${WS_BASE}/ws/web_${Date.now()}`;
+            ws = new WebSocket(url);
+            ws.onopen = () => {
+                wsRetries = 0;
+                if (authToken) ws.send(JSON.stringify({ type: 'auth', token: authToken }));
+            };
+            ws.onmessage = (e) => {
+                const d = JSON.parse(e.data);
+                if (d.type === 'connection_established') sessionId = d.session_id;
+                else if (d.type === 'content_delta') appendStream(d.text);
+                else if (d.type === 'stream_end') { finalizeStream(); hideTyping(); }
+            };
+            ws.onclose = () => {
+                wsRetries++;
+                if (wsRetries <= 10) {
+                    const delay = Math.min(5000 * Math.pow(1.5, wsRetries - 1), 60000);
+                    setTimeout(connectWS, delay);
+                }
+            };
+        } catch (e) {}
+    }
+
+    // ── Send message ──
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const text = input.value.trim();
+        if (!text || sending) return;
+        input.value = '';
+        sending = true;
+        document.getElementById('sendBtn').disabled = true;
+
+        addMsg('user', text);
+        showTyping();
+        streamConsumedTurn = false;
+
+        try {
+            const data = await apiFetch('/api/v1/chat', {
+                method: 'POST',
+                body: JSON.stringify({
+                    message: text, session_id: sessionId,
+                    provider: activeProvider !== 'cognitive_core' ? activeProvider : null,
+                })
+            });
+            hideTyping();
+            if (!data.success) throw new Error(data.error || data.detail || 'Failed');
+            if (data.session_id) sessionId = data.session_id;
+
+            const meta = data.metadata || {};
+            for (const k of ['image_url', 'image_base64', 'code_output', 'code_error', 'execution_time', 'capability_type'])
+                if (data[k] !== undefined) meta[k] = data[k];
+
+            // If the WS already rendered the text for this turn, don't duplicate the bubble.
+            const hasRichAttachment = meta.image_url || meta.image_base64 || meta.code_output !== undefined || meta.code_error || meta.transcription || meta.ai_description;
+            if (!streamConsumedTurn || hasRichAttachment) {
+                addMsg('assistant', data.response, meta);
+            }
+            updateMetrics(meta);
+        } catch (e) {
+            hideTyping();
+            addMsg('assistant', `Error: ${e.message || 'Request failed'}`, { provider: 'error' });
+        } finally {
+            sending = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+    }
+
+    function handleInputKey(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    }
+
+    // ── Compact ──
+    async function sendCompact() {
+        if (!sessionId) { addMsg('system', 'No active session to compact.'); return; }
+        showTyping();
+        try {
+            const r = await apiFetch(`/api/v1/conversations/${encodeURIComponent(sessionId)}/compact`, { method: 'POST' });
+            hideTyping();
+            if (r.success) {
+                const s = r.stats;
+                addMsg('system', `Context compressed: ${s.original_messages} msgs \u2192 ${s.compressed_messages} msgs. ${s.tokens_saved} tokens saved (${s.method}).`);
+            } else {
+                addMsg('system', 'Compression returned no changes.');
+            }
+        } catch (e) {
+            hideTyping();
+            addMsg('assistant', `Compact failed: ${e.message}`, { provider: 'error' });
+        }
+    }
+
+    // ── Render messages ──
+    function addMsg(role, content, meta = {}) {
+        content = content == null ? '' : String(content);
+        const container = document.getElementById('chatMessages');
+        const div = document.createElement('div');
+        div.className = `msg ${role}`;
+
+        let html = '';
+        const safeUrl = (u) => {
+            const s = String(u || '');
+            if (!/^(https?:\/\/|data:image\/)/i.test(s)) return '';
+            return s.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/'/g, '&#39;');
+        };
+
+        const safeB64 = (s) => String(s || '').replace(/[^A-Za-z0-9+/=]/g, '');
+        if (meta.image_url) {
+            const u = safeUrl(meta.image_url);
+            html = `${renderMd(content)}${u ? `<img src="${u}" alt="Generated">` : ''}`;
+        } else if (meta.image_base64) {
+            html = `${renderMd(content)}<img src="data:image/png;base64,${safeB64(meta.image_base64)}" alt="Generated">`;
+        } else if (meta.code_output !== undefined || meta.code_error) {
+            html = `<div>${esc(String(content ?? '').split('\n')[0])}</div>`;
+            if (meta.code_output) html += `<pre><code>${esc(meta.code_output)}</code></pre>`;
+            if (meta.code_error) html += `<pre style="border-left:3px solid var(--error);"><code>${esc(meta.code_error)}</code></pre>`;
+        } else if (meta.transcription) {
+            const t = meta.transcription;
+            const lang = esc(String(t.language || '?'));
+            const dur = typeof t.duration === 'number' ? t.duration.toFixed(1) + 's' : '?';
+            const wc = Number(t.word_count) || 0;
+            html = `${renderMd(content)}<blockquote><strong>Transcription</strong> (${lang}, ${dur}, ${wc} words)<br><br>${esc(t.text || '')}</blockquote>`;
+        } else if (meta.ai_description) {
+            html = `${renderMd(content)}<blockquote><strong>Vision:</strong> ${esc(meta.ai_description)}</blockquote>`;
+        } else {
+            html = renderMd(content);
+        }
+
+        // Meta line
+        let metaHtml = '';
+        if (role === 'assistant') {
+            const p = [meta.provider || activeProvider || '', meta.model || '',
+                meta.tokens_used ? `${meta.tokens_used} tok` : '',
+                meta.safety_score ? `${meta.safety_score.toFixed(2)} safe` : '',
+                meta.processing_time ? `${meta.processing_time.toFixed(1)}s` : ''].filter(Boolean).map(esc);
+            metaHtml = `<div class="msg-meta"><span>${p.slice(0, 2).join(' / ')}</span><span>${p.slice(2).join(' \u00b7 ')}</span></div>`;
+        } else if (role === 'user') {
+            metaHtml = `<div class="msg-meta"><span>You</span><span>${esc(new Date().toLocaleTimeString())}</span></div>`;
+        }
+
+        // Actions
+        const actions = role !== 'system' ? `<div class="msg-actions"><button class="msg-action-btn" onclick="copyMsg(this)" title="Copy">&#128203;</button></div>` : '';
+
+        div.innerHTML = `${actions}<div class="msg-content">${html}</div>${metaHtml}`;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+        messageHistory.push({ role, content, timestamp: new Date(), metadata: meta });
+    }
+
+    function appendStream(text) {
+        if (text == null) return;
+        streamConsumedTurn = true;
+        if (!streamingMsgEl) {
+            const container = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'msg assistant streaming';
+            div.innerHTML = `<div class="msg-content"></div><div class="msg-meta"><span>${esc(activeProvider || '')}</span><span>streaming…</span></div>`;
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            streamingMsgEl = div;
+            streamingBuffer = '';
+            hideTyping();
+        }
+        streamingBuffer += text;
+        const content = streamingMsgEl.querySelector('.msg-content');
+        if (content) content.innerHTML = renderMd(streamingBuffer);
+        const container = document.getElementById('chatMessages');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function finalizeStream() {
+        if (streamingMsgEl) {
+            streamingMsgEl.classList.remove('streaming');
+            messageHistory.push({ role: 'assistant', content: streamingBuffer, timestamp: new Date(), metadata: {} });
+        }
+        streamingMsgEl = null;
+        streamingBuffer = '';
+    }
+
+    function copyMsg(btn) {
+        const msg = btn.closest('.msg');
+        const text = msg.querySelector('.msg-content')?.textContent || '';
+        const done = () => { btn.textContent = '\u2713'; setTimeout(() => btn.textContent = '\u{1F4CB}', 1200); };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        } else {
+            fallbackCopy(text, done);
+        }
+    }
+    function fallbackCopy(text, done) {
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed'; ta.style.top = '-1000px';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            done && done();
+        } catch (_) {}
+    }
+
+    // ── Markdown ──
+    function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    function renderMd(text) {
+        let h = esc(text);
+        // Code blocks
+        h = h.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+            `<pre><code>${code.trim()}</code></pre>`);
+        // Inline code
+        h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+        // Bold / italic (italic requires non-space adjacency to avoid eating arithmetic like "5 * 3")
+        h = h.replace(/\*\*([^\s*][^*]*?[^\s*]|\S)\*\*/g, '<strong>$1</strong>');
+        h = h.replace(/(^|[^\w*])\*([^\s*][^*]*?[^\s*]|\S)\*(?=[^\w*]|$)/g, '$1<em>$2</em>');
+        // Headers
+        h = h.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        h = h.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        h = h.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+        // Blockquotes
+        h = h.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+        // Lists
+        h = h.replace(/^- (.+)$/gm, '<li>$1</li>');
+        h = h.replace(/(?:<li>[^\n]*<\/li>\s*)+/g, (m) => `<ul>${m.replace(/\s+$/, '')}</ul>`);
+        // Horizontal rules
+        h = h.replace(/^---$/gm, '<hr>');
+        // Links — allow only http(s) and mailto to prevent javascript:/data: XSS
+        h = h.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, label, href) => {
+            const safe = /^(https?:\/\/|mailto:)/i.test(href) ? href.replace(/"/g, '&quot;') : '#';
+            return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        });
+        // Line breaks
+        h = h.replace(/\n/g, '<br>');
+        // Clean up br inside block elements
+        h = h.replace(/<br>(<\/?(?:pre|ul|ol|li|h[1-3]|blockquote|hr))/g, '$1');
+        h = h.replace(/(<\/(?:pre|ul|ol|li|h[1-3]|blockquote|hr)>)<br>/g, '$1');
+        return h;
+    }
+
+    // ── Sidebar renders ──
+    function renderProviders(data) {
+        const el = document.getElementById('providerList');
+        el.innerHTML = '';
+        const providers = Array.isArray(data.providers) ? data.providers : [];
+        const all = ['cognitive_core', ...providers.filter(p => p !== 'cognitive_core')];
+        const details = data.provider_details || {};
+        const labels = { cognitive_core: 'Cognitive Core', openai: 'OpenAI', anthropic: 'Claude', google: 'Gemini', ollama: 'Ollama' };
+        all.forEach(name => {
+            const d = document.createElement('div');
+            d.className = `prov-item${name === data.active_provider ? ' active' : ''}`;
+            d.dataset.provider = name;
+            const det = details[name] || {};
+            const st = det.status === 'open' ? 'Down' : 'Ready';
+            const cls = det.status === 'open' ? ' down' : '';
+            d.innerHTML = `<span>${esc(labels[name] || name)}</span><span class="prov-badge${cls}">${st}</span>`;
+            d.onclick = () => switchProvider(name);
+            el.appendChild(d);
+        });
+    }
+
+    function renderCaps(caps) {
+        const el = document.getElementById('capBadges');
+        el.innerHTML = '';
+        [['Image Gen', caps.image_generation?.available], ['Vision', caps.vision?.available],
+         ['Code Exec', caps.code_execution?.available], ['Transcribe', caps.transcription?.available]
+        ].forEach(([label, on]) => {
+            const s = document.createElement('span');
+            s.className = `cap-tag${on ? ' on' : ''}`;
+            s.textContent = label;
+            el.appendChild(s);
+        });
+    }
+
+    function renderMCP(servers) {
+        const el = document.getElementById('mcpList');
+        if (!servers.length) { el.innerHTML = '<span style="font-size:0.8rem;color:var(--text-muted)">No servers connected</span>'; return; }
+        el.innerHTML = '';
+        servers.forEach(s => {
+            const d = document.createElement('div');
+            d.className = 'mcp-server';
+            const count = Number(s.tool_count) || 0;
+            const name = s.name || '';
+            d.innerHTML = `<span class="mcp-dot ${s.connected ? 'ok' : 'off'}"></span>
+                <span>${esc(name)}</span>
+                <span class="mcp-tools-count">${count} tools</span>
+                <button class="mcp-remove-btn" title="Remove server">&times;</button>`;
+            const removeBtn = d.querySelector('.mcp-remove-btn');
+            if (removeBtn) removeBtn.addEventListener('click', () => removeMCPServer(name));
+            el.appendChild(d);
+        });
+    }
+
+    async function switchProvider(name) {
+        activeProvider = name;
+        document.querySelectorAll('.prov-item').forEach(i => i.classList.remove('active'));
+        const safe = (window.CSS && CSS.escape) ? CSS.escape(name) : String(name).replace(/["\\]/g, '\\$&');
+        const el = document.querySelector(`[data-provider="${safe}"]`);
+        if (el) el.classList.add('active');
+        if (sessionId) {
+            try { await apiFetch(`/api/v1/providers/switch?session_id=${encodeURIComponent(sessionId)}`, { method: 'POST', body: JSON.stringify({ provider: name }) }); } catch (e) {}
+        }
+        addMsg('system', `Switched to ${name}`);
+    }
+
+    // ── Metrics ──
+    async function refreshMetrics() {
+        try {
+            const st = await apiFetch('/api/v1/status');
+            document.getElementById('mSessions').textContent = st.active_sessions || 0;
+            document.getElementById('mRequests').textContent = st.performance_metrics?.total_requests || 0;
+            document.getElementById('mProvider').textContent = st.active_provider || '-';
+        } catch (e) {}
+    }
+
+    function updateMetrics(m) {
+        if (m.tokens_used) { metrics.tokens += m.tokens_used; document.getElementById('mTokens').textContent = metrics.tokens.toLocaleString(); }
+        if (m.processing_time) { metrics.totalTime += m.processing_time; metrics.count++; document.getElementById('mAvgTime').textContent = `${((metrics.totalTime / metrics.count) * 1000).toFixed(0)}ms`; }
+        if (m.safety_score) document.getElementById('mSafety').textContent = m.safety_score.toFixed(2);
+    }
+
+    // ── UI helpers ──
+    function showTyping() { document.getElementById('typingIndicator').style.display = 'block'; document.getElementById('chatMessages').scrollTop = 999999; }
+    function hideTyping() { document.getElementById('typingIndicator').style.display = 'none'; }
+
+    function setStatus(text, type) {
+        document.getElementById('statusText').textContent = text;
+        const dot = document.getElementById('statusDot');
+        dot.className = 'status-dot ' + type;
+    }
+
+    function toggleMetrics() { document.getElementById('metricsPanel').classList.toggle('visible'); }
+    function toggleSidebar() {
+        const app = document.querySelector('.app');
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+            document.getElementById('sidebar').classList.toggle('open');
+        } else {
+            app.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('na-sidebar-collapsed', app.classList.contains('sidebar-collapsed'));
+        }
+    }
+
+    function toggleTheme() {
+        const html = document.documentElement;
+        const isLight = html.getAttribute('data-theme') === 'light';
+        html.setAttribute('data-theme', isLight ? '' : 'light');
+        document.getElementById('themeBtn').textContent = isLight ? '\u263E' : '\u2600';
+        localStorage.setItem('na-theme', isLight ? 'dark' : 'light');
+    }
+
+    // ── Tools ──
+    function openTool(name) {
+        if (name === 'code_analysis') {
+            const code = prompt('Paste code to analyze:');
+            if (!code) return;
+            const lang = (prompt('Language (python, javascript, go, rust, java, c, cpp)?', 'python') || 'python').trim().toLowerCase();
+            showTyping();
+            apiFetch('/api/v1/tools/code_analysis', { method: 'POST', body: JSON.stringify({ code, language: lang }) })
+                .then(r => { hideTyping(); const a = r.analysis || r; addMsg('assistant', `**Code Analysis:** syntax ${a.syntax_valid ? 'valid' : 'INVALID'}, ${a.line_count} lines, complexity ${a.cyclomatic_complexity_estimate || '?'}.\nPatterns: ${(a.patterns || []).join(', ') || 'none'}.${a.issues?.length ? '\nIssues: ' + a.issues.map(i => i.message).join('; ') : ''}`, { provider: 'code_analysis' }); })
+                .catch(e => { hideTyping(); addMsg('assistant', `Analysis failed: ${e.message}`, { provider: 'error' }); });
+        } else if (name === 'math_computation') {
+            const expr = prompt('Enter expression or equation:');
+            if (!expr) return;
+            showTyping();
+            apiFetch('/api/v1/tools/mathematical_computation', { method: 'POST', body: JSON.stringify({ expression: expr }) })
+                .then(r => { hideTyping(); addMsg('assistant', `**Result:** ${JSON.stringify(r.result)}`, { provider: 'math_core' }); })
+                .catch(e => { hideTyping(); addMsg('assistant', `Math failed: ${e.message}`, { provider: 'error' }); });
+        }
+    }
+
+    // ── Image modal ──
+    function openImageGen() { document.getElementById('imageModal').classList.add('open'); document.getElementById('imgPrompt').focus(); }
+    function closeImageGen() { document.getElementById('imageModal').classList.remove('open'); }
+    function submitImageGen() {
+        const p = document.getElementById('imgPrompt').value.trim();
+        if (!p) return;
+        closeImageGen();
+        document.getElementById('imgPrompt').value = '';
+        addMsg('user', `Generate image: ${p}`);
+        showTyping();
+        apiFetch('/api/v1/generate-image', { method: 'POST', body: JSON.stringify({ prompt: p, size: document.getElementById('imgSize').value, provider: document.getElementById('imgProvider').value }) })
+            .then(r => { hideTyping(); if (r.success) addMsg('assistant', r.revised_prompt || p, { image_url: r.image_url, image_base64: r.image_base64, provider: r.provider }); else addMsg('assistant', `Failed: ${r.error || r.detail}`, { provider: 'error' }); })
+            .catch(e => { hideTyping(); addMsg('assistant', `Error: ${e.message}`, { provider: 'error' }); });
+    }
+
+    // ── Transcribe ──
+    async function handleTranscribe(event) {
+        const file = event.target.files[0]; if (!file) return;
+        event.target.value = '';
+        addMsg('user', `Transcribe: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+        showTyping();
+        try {
+            const form = new FormData(); form.append('file', file);
+            const headers = {}; if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+            const r = await fetch(`${API_BASE}/api/v1/transcribe`, { method: 'POST', headers, body: form });
+            if (!r.ok) throw new Error(`Transcribe failed: ${r.status}`);
+            const data = await r.json();
+            hideTyping();
+            if (data.success) addMsg('assistant', `Transcription of "${file.name}" complete.`, { transcription: { text: data.text, language: data.language, duration: data.duration, word_count: data.word_count }, provider: data.provider });
+            else addMsg('assistant', `Transcription failed: ${data.error || data.detail}`, { provider: 'error' });
+        } catch (e) { hideTyping(); addMsg('assistant', `Error: ${e.message}`, { provider: 'error' }); }
+    }
+
+    // ── File upload (handled by Files Panel section below) ──
+
+    // ── Export ──
+    function exportConversation() {
+        const blob = new Blob([JSON.stringify({ session_id: sessionId, timestamp: new Date().toISOString(), messages: messageHistory, metrics }, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        a.href = url; a.download = `neural_assistant_${Date.now()}.json`; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        addMsg('system', 'Conversation exported.');
+    }
+
+    // ── Files Panel (wired to backend) ──
+    let attachedFiles = [];
+    let filesPollingTimer = null;
+
+    let _filesDropdownCloseHandler = null;
+    function _detachFilesDropdownCloseHandler() {
+        if (_filesDropdownCloseHandler) {
+            document.removeEventListener('click', _filesDropdownCloseHandler);
+            _filesDropdownCloseHandler = null;
+        }
+    }
+    function toggleFilesDropdown(e) {
+        e.stopPropagation();
+        const dd = document.getElementById('filesDropdown');
+        const willOpen = !dd.classList.contains('open');
+        dd.classList.toggle('open', willOpen);
+        _detachFilesDropdownCloseHandler();
+        if (willOpen) {
+            _filesDropdownCloseHandler = (ev) => {
+                if (!dd.contains(ev.target)) {
+                    dd.classList.remove('open');
+                    _detachFilesDropdownCloseHandler();
+                }
+            };
+            setTimeout(() => document.addEventListener('click', _filesDropdownCloseHandler), 0);
+        }
+    }
+
+    function updateFilesUI(data) {
+        attachedFiles = data.files || [];
+        const cap = data.capacity || { percent: 0 };
+        document.getElementById('filesCapFill').style.width = cap.percent + '%';
+        const indexDot = document.getElementById('filesIndexDot');
+        const indexText = document.getElementById('filesIndexText');
+        if (data.indexing) {
+            indexDot.style.display = 'inline-block';
+            indexText.style.display = 'inline';
+        } else {
+            indexDot.style.display = 'none';
+            indexText.style.display = 'none';
+        }
+        document.getElementById('filesCapText').innerHTML = `${cap.percent.toFixed(0)}% of project capacity used`;
+        renderFilesGrid();
+    }
+
+    async function loadProjectFiles() {
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const data = await apiFetch(`/api/v1/project/files${sid}`);
+            if (data.success) updateFilesUI(data);
+        } catch (e) {}
+    }
+
+    function startFilesPolling() {
+        if (filesPollingTimer) clearInterval(filesPollingTimer);
+        filesPollingTimer = setInterval(loadProjectFiles, 5000);
+    }
+
+    function getFileIcon(source, name) {
+        if (source === 'github') return '<svg width="20" height="20" viewBox="0 0 24 24" fill="var(--text-secondary)"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>';
+        if (source === 'gdrive') return '<svg width="20" height="20" viewBox="0 0 24 24"><path d="M7.71 3.5L1.15 15l3.43 5.96h6.58L7.71 3.5z" fill="#0066DA"/><path d="M16.29 3.5H7.71l3.44 5.96 5.14 8.92 3.43-5.96L16.29 3.5z" fill="#00AC47"/><path d="M1.15 15l3.43 5.96h13.84l3.43-5.96H1.15z" fill="#EA4335"/></svg>';
+        if (source === 'text') return '\u{1F4DD}';
+        const ext = (name || '').split('.').pop()?.toLowerCase() || '';
+        if (['jpg','jpeg','png','gif','webp','bmp'].includes(ext)) return '\u{1F5BC}';
+        if (['mp3','wav','flac','ogg','m4a'].includes(ext)) return '\u{1F3B5}';
+        if (['mp4','avi','mov','mkv','webm'].includes(ext)) return '\u{1F3AC}';
+        if (['pdf'].includes(ext)) return '\u{1F4C4}';
+        if (['py','js','ts','html','css','json','xml','yaml','yml'].includes(ext)) return '\u{1F4BB}';
+        return '\u{1F4CE}';
+    }
+
+    function renderFilesGrid() {
+        const grid = document.getElementById('filesGrid');
+        grid.innerHTML = '';
+        if (!attachedFiles.length) return;
+        attachedFiles.forEach((f) => {
+            const card = document.createElement('div');
+            card.className = 'file-card';
+            if (f.status === 'indexing') card.style.opacity = '0.6';
+            const icon = getFileIcon(f.source, f.name);
+            const badge = f.badge || f.source?.toUpperCase() || 'FILE';
+            const sizeStr = f.size > 1024*1024 ? (f.size/(1024*1024)).toFixed(1)+'MB' : f.size > 1024 ? (f.size/1024).toFixed(0)+'KB' : f.size > 0 ? f.size+'B' : '--';
+            const statusIcon = f.status === 'indexing' ? ' \u23F3' : f.status === 'error' ? ' \u26A0' : '';
+            const chunks = Number(f.indexed_chunks) || 0;
+            card.innerHTML = `
+                <div class="file-card-preview">${icon}</div>
+                <div class="file-card-name" title="${esc(f.name)}">${esc(f.name)}${statusIcon}</div>
+                <div class="file-card-meta"><span class="file-card-badge">${esc(badge)}</span> ${esc(sizeStr)}${chunks ? ' \u00b7 ' + chunks + ' chunks' : ''}</div>
+                <button class="file-card-remove" title="Remove">&times;</button>`;
+            card.addEventListener('click', (e) => { if (!e.target.closest('.file-card-remove')) openFilePreview(f.file_id, f.name); });
+            card.style.cursor = 'pointer';
+            const removeBtn = card.querySelector('.file-card-remove');
+            if (removeBtn) removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeFile(f.file_id); });
+            grid.appendChild(card);
+        });
+    }
+
+    async function removeFile(fileId) {
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            await apiFetch(`/api/v1/project/files/${fileId}${sid}`, { method: 'DELETE' });
+            await loadProjectFiles();
+            addMsg('system', 'File removed from project.');
+        } catch (e) { addMsg('system', `Remove failed: ${e.message}`); }
+    }
+
+    // GitHub
+    function openGitHubModal() {
+        document.getElementById('filesDropdown').classList.remove('open');
+        document.getElementById('githubModal').classList.add('open');
+        document.getElementById('ghRepoUrl').focus();
+    }
+    function closeGitHubModal() { document.getElementById('githubModal').classList.remove('open'); }
+
+    async function attachGitHub() {
+        const urlInput = document.getElementById('ghRepoUrl').value.trim();
+        if (!urlInput) return;
+        const branch = document.getElementById('ghBranch').value.trim() || 'main';
+        const token = document.getElementById('ghToken').value.trim();
+        const scanAll = document.getElementById('ghScanAll').checked;
+        const includeDocs = document.getElementById('ghIncludeDocs').checked;
+        closeGitHubModal();
+
+        addMsg('system', `Connecting to GitHub: ${urlInput} (${branch})...`);
+        showTyping();
+
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const data = await apiFetch(`/api/v1/project/github/connect${sid}`, {
+                method: 'POST',
+                body: JSON.stringify({ repo: urlInput, branch, token: token || null, scan_all: scanAll, include_docs: includeDocs })
+            });
+            hideTyping();
+            if (data.success) {
+                addMsg('system', data.message || 'GitHub connected. Scanning files...');
+                await loadProjectFiles();
+                // Poll until indexing completes — match by file_id if given, else by repo meta
+                const targetId = data.file_id || data.file?.file_id;
+                const repoKey = (urlInput || '').toLowerCase();
+                const findGhFile = () => attachedFiles.find(f =>
+                    (targetId && f.file_id === targetId) ||
+                    (f.source === 'github' && (f.meta?.repo || '').toLowerCase().includes(repoKey.replace(/^https?:\/\/github\.com\//, '')))
+                );
+                const startedAt = Date.now();
+                const pollGh = setInterval(async () => {
+                    await loadProjectFiles();
+                    const f = findGhFile();
+                    const timedOut = Date.now() - startedAt > 5 * 60 * 1000;
+                    if ((f && f.status !== 'indexing') || timedOut) {
+                        clearInterval(pollGh);
+                        if (timedOut && (!f || f.status === 'indexing')) {
+                            addMsg('system', 'GitHub scan still running in background.');
+                            return;
+                        }
+                        if (f && f.status === 'ready') {
+                            const m = f.meta || {};
+                            let summary = `**GitHub connected:** ${m.repo || urlInput}\n`;
+                            summary += `- Branch: ${m.branch || branch}\n- ${m.file_count || '?'} files, ${m.scanned_files || 0} scanned\n`;
+                            if (m.language) summary += `- Language: ${m.language}\n`;
+                            if (m.description) summary += `- ${m.description}\n`;
+                            if (m.stars) summary += `- \u2B50 ${m.stars} stars`;
+                            addMsg('assistant', summary, { provider: 'github' });
+                        } else if (f && f.status === 'error') {
+                            addMsg('assistant', `GitHub scan failed: ${f.meta?.error || 'Unknown error'}`, { provider: 'error' });
+                        }
+                    }
+                }, 2000);
+            }
+        } catch (e) {
+            hideTyping();
+            addMsg('assistant', `GitHub connection failed: ${e.message}`, { provider: 'error' });
+        }
+
+        document.getElementById('ghRepoUrl').value = '';
+        document.getElementById('ghBranch').value = '';
+        document.getElementById('ghToken').value = '';
+    }
+
+    // Text Content
+    function openTextContentModal() {
+        document.getElementById('filesDropdown').classList.remove('open');
+        document.getElementById('textContentModal').classList.add('open');
+        document.getElementById('textTitle').focus();
+    }
+    function closeTextContentModal() { document.getElementById('textContentModal').classList.remove('open'); }
+
+    async function attachTextContent() {
+        const title = document.getElementById('textTitle').value.trim() || 'Untitled';
+        const content = document.getElementById('textContent').value.trim();
+        if (!content) return;
+        closeTextContentModal();
+
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const data = await apiFetch(`/api/v1/project/text/add${sid}`, {
+                method: 'POST',
+                body: JSON.stringify({ title, content })
+            });
+            if (data.success) {
+                addMsg('system', `Added text content: "${title}" (${data.file?.indexed_chunks || 0} chunks indexed)`);
+                await loadProjectFiles();
+            }
+        } catch (e) { addMsg('system', `Failed to add text: ${e.message}`); }
+
+        document.getElementById('textTitle').value = '';
+        document.getElementById('textContent').value = '';
+    }
+
+    // Google Drive
+    function openGoogleDriveModal() {
+        document.getElementById('filesDropdown').classList.remove('open');
+        document.getElementById('googleDriveModal').classList.add('open');
+        document.getElementById('gdUrl').focus();
+    }
+    function closeGoogleDriveModal() { document.getElementById('googleDriveModal').classList.remove('open'); }
+
+    async function attachGoogleDrive() {
+        const url = document.getElementById('gdUrl').value.trim();
+        if (!url) return;
+        closeGoogleDriveModal();
+
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const data = await apiFetch(`/api/v1/project/gdrive/connect${sid}`, {
+                method: 'POST',
+                body: JSON.stringify({ url, recursive: document.getElementById('gdRecursive').checked })
+            });
+            if (data.success) {
+                addMsg('system', data.note || 'Google Drive linked.');
+                await loadProjectFiles();
+            }
+        } catch (e) { addMsg('system', `Drive connect failed: ${e.message}`); }
+
+        document.getElementById('gdUrl').value = '';
+    }
+
+    // File upload — sends to backend project files endpoint + original upload
+    async function handleFileUpload(event) {
+        const files = event.target.files;
+        if (!files.length) return;
+        event.target.value = '';
+
+        for (const file of files) {
+            addMsg('user', `Upload: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+            showTyping();
+            try {
+                // Upload to project files (indexing) — surface errors so indexing failures aren't silent
+                const projForm = new FormData(); projForm.append('file', file);
+                const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+                const projHeaders = {}; if (authToken) projHeaders['Authorization'] = `Bearer ${authToken}`;
+                try {
+                    const pr = await fetch(`${API_BASE}/api/v1/project/files/upload${sid}`, { method: 'POST', headers: projHeaders, body: projForm });
+                    if (!pr.ok) {
+                        const errText = await pr.text().catch(() => '');
+                        addMsg('system', `Indexing failed for "${file.name}" (${pr.status}): ${errText || 'unknown error'}`);
+                    } else {
+                        await loadProjectFiles();
+                    }
+                } catch (pe) {
+                    addMsg('system', `Indexing request failed for "${file.name}": ${pe.message}`);
+                }
+
+                // Also process through main upload for AI analysis
+                const form = new FormData(); form.append('file', file);
+                const headers = {}; if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+                const r = await fetch(`${API_BASE}/api/v1/upload`, { method: 'POST', headers, body: form });
+                if (!r.ok) throw new Error(`Upload failed: ${r.status}`);
+                const data = await r.json();
+                hideTyping();
+                if (data.success) {
+                    const meta = { provider: 'multimodal' };
+                    let msg = `"${data.filename}" processed (${data.type}, ${data.size} bytes).`;
+                    if (data.analysis?.ai_description) meta.ai_description = data.analysis.ai_description;
+                    if (data.transcription) meta.transcription = data.transcription;
+                    if (data.analysis && !data.analysis.ai_description && !data.transcription) {
+                        const keys = Object.keys(data.analysis);
+                        if (keys.length) msg += '\n' + keys.map(k => `${k}: ${JSON.stringify(data.analysis[k])}`).join('\n');
+                    }
+                    addMsg('assistant', msg, meta);
+                } else addMsg('assistant', `Upload failed: ${data.error || data.detail}`, { provider: 'error' });
+            } catch (e) { hideTyping(); addMsg('assistant', `Error: ${e.message}`, { provider: 'error' }); }
+        }
+        // Refresh files grid after uploads
+        setTimeout(loadProjectFiles, 1500);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // NEW FEATURES — Admin, MCP Mgmt, Code Exec, Vision, History, etc.
+    // ══════════════════════════════════════════════════════════════════
+
+    // ── Admin Panel ──
+    function openAdminPanel() {
+        document.getElementById('adminPanel').classList.add('open');
+        loadAdminMetrics();
+        loadToolPolicies();
+    }
+    function closeAdminPanel() { document.getElementById('adminPanel').classList.remove('open'); }
+
+    function switchAdminTab(tabName) {
+        document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.admin-tab-pane').forEach(p => p.classList.remove('active'));
+        const tabs = { overview: 'adminOverview', logs: 'adminLogs', benchmark: 'adminBenchmark', tools: 'adminTools' };
+        const pane = document.getElementById(tabs[tabName]);
+        if (pane) pane.classList.add('active');
+        // Activate the clicked tab button
+        document.querySelectorAll('.admin-tab').forEach(t => {
+            if (t.textContent.toLowerCase().includes(tabName)) t.classList.add('active');
+        });
+        if (tabName === 'logs') loadAdminLogs();
+        if (tabName === 'tools') { loadToolPolicies(); loadToolAudit(); }
+    }
+
+    function fmtUptime(secs) {
+        const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600),
+              m = Math.floor((secs % 3600) / 60);
+        if (d > 0) return `${d}d ${h}h`;
+        if (h > 0) return `${h}h ${m}m`;
+        return `${m}m ${Math.floor(secs % 60)}s`;
+    }
+
+    async function loadAdminMetrics() {
+        try {
+            const data = await apiFetch('/api/v1/admin/metrics');
+            const ss = data.system_status || {};
+            const pm = data.performance_metrics || {};
+            const cm = data.connection_metrics || {};
+            const cfg = data.configuration || {};
+
+            document.getElementById('amUptime').textContent = fmtUptime(pm.uptime_seconds || 0);
+            document.getElementById('amSessions').textContent = ss.active_sessions || 0;
+            document.getElementById('amRequests').textContent = pm.total_requests || 0;
+            document.getElementById('amFailed').textContent = pm.failed_requests || 0;
+            document.getElementById('amAvgTime').textContent = typeof pm.avg_response_time === 'number' ? pm.avg_response_time.toFixed(1) + 's' : '--';
+            document.getElementById('amWS').textContent = cm.active_websockets || 0;
+
+            // Config
+            document.getElementById('adminConfig').innerHTML =
+                `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;">` +
+                `<span style="color:var(--text-muted)">Environment:</span><span>${esc(cfg.environment || '?')}</span>` +
+                `<span style="color:var(--text-muted)">Auth Required:</span><span>${cfg.auth_required ? 'Yes' : 'No'}</span>` +
+                `<span style="color:var(--text-muted)">Safety Level:</span><span>${esc(cfg.safety_level || '?')}</span>` +
+                `</div>`;
+
+            // Provider health
+            const ph = data.provider_health || {};
+            const pie = data.provider_init_errors || {};
+            const phEl = document.getElementById('adminProviderHealth');
+            const providers = [...new Set([...Object.keys(ph), ...Object.keys(pie)])];
+            if (!providers.length) { phEl.innerHTML = '<span style="color:var(--text-muted);font-size:0.82rem;">No provider data</span>'; }
+            else {
+                phEl.innerHTML = providers.map(p => {
+                    const health = ph[p] || {};
+                    const err = pie[p];
+                    const isHealthy = !err && health.state !== 'open';
+                    return `<div class="provider-health-item">
+                        <span>${esc(p)}</span>
+                        <span class="ph-status ${isHealthy ? 'healthy' : 'unhealthy'}">${isHealthy ? 'Healthy' : (err ? 'Error' : 'Down')}</span>
+                    </div>${err ? `<div style="font-size:0.72rem;color:var(--error);padding:0 12px 6px;">${esc(String(err))}</div>` : ''}`;
+                }).join('');
+            }
+        } catch (e) {
+            document.getElementById('adminConfig').innerHTML = `<span style="color:var(--error)">Failed to load: ${esc(e.message)}</span>`;
+        }
+    }
+
+    async function loadAdminLogs() {
+        const level = document.getElementById('logLevel').value;
+        const limit = parseInt(document.getElementById('logLimit').value) || 100;
+        const el = document.getElementById('logEntries');
+        el.innerHTML = '<span style="color:var(--text-muted)">Loading...</span>';
+        try {
+            const data = await apiFetch(`/api/v1/admin/logs?level=${level}&limit=${limit}`);
+            if (data.note) {
+                el.innerHTML = `<span style="color:var(--text-muted)">${esc(data.note)}</span>`;
+                return;
+            }
+            const logs = data.logs || [];
+            if (!logs.length) { el.innerHTML = '<span style="color:var(--text-muted)">No log entries</span>'; return; }
+            el.innerHTML = logs.map(line => {
+                let cls = '';
+                if (line.includes('ERROR') || line.includes('CRITICAL')) cls = 'error';
+                else if (line.includes('WARNING')) cls = 'warn';
+                else if (line.includes('INFO')) cls = 'info';
+                return `<div class="log-entry ${cls}">${esc(line)}</div>`;
+            }).join('');
+            el.scrollTop = el.scrollHeight;
+        } catch (e) {
+            el.innerHTML = `<span style="color:var(--error)">Error: ${esc(e.message)}</span>`;
+        }
+    }
+
+    async function adminReloadConfig() {
+        if (!confirm('Reload server configuration? CORS changes require restart.')) return;
+        try {
+            const data = await apiFetch('/api/v1/admin/config/reload', { method: 'POST' });
+            addMsg('system', data.message || 'Configuration reloaded.');
+            loadAdminMetrics();
+        } catch (e) { addMsg('system', `Config reload failed: ${e.message}`); }
+    }
+
+    async function adminOptimize() {
+        try {
+            const data = await apiFetch('/api/v1/optimize', { method: 'POST' });
+            addMsg('system', `System optimized. Results: ${JSON.stringify(data.optimization_results || {})}`);
+            loadAdminMetrics();
+        } catch (e) { addMsg('system', `Optimize failed: ${e.message}`); }
+    }
+
+    async function adminCleanupSessions() {
+        if (!confirm('Clean up idle sessions?')) return;
+        try {
+            const data = await apiFetch('/api/v1/admin/sessions/cleanup', { method: 'POST' });
+            addMsg('system', `Sessions cleaned up. Results: ${JSON.stringify(data.cleanup_results || {})}`);
+            loadAdminMetrics();
+        } catch (e) { addMsg('system', `Cleanup failed: ${e.message}`); }
+    }
+
+    // ── Benchmark ──
+    let activeBenchmarkId = null;
+    let benchPollTimer = null;
+
+    async function runBenchmark() {
+        const btn = document.getElementById('benchRunBtn');
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        const el = document.getElementById('benchResults');
+        el.innerHTML = '<p style="color:var(--text-muted)">Benchmark started. Polling for results...</p>';
+        try {
+            const data = await apiFetch('/api/v1/performance/benchmark', { method: 'POST' });
+            activeBenchmarkId = data.benchmark_id;
+            pollBenchmark();
+        } catch (e) {
+            el.innerHTML = `<p style="color:var(--error)">Failed: ${esc(e.message)}</p>`;
+            btn.disabled = false;
+            btn.textContent = 'Run Benchmark';
+        }
+    }
+
+    function pollBenchmark() {
+        if (!activeBenchmarkId) return;
+        if (benchPollTimer) clearInterval(benchPollTimer);
+        benchPollTimer = setInterval(async () => {
+            try {
+                const data = await apiFetch(`/api/v1/performance/benchmark/${activeBenchmarkId}`);
+                if (data.status === 'completed' || data.status === 'failed') {
+                    clearInterval(benchPollTimer);
+                    benchPollTimer = null;
+                    const btn = document.getElementById('benchRunBtn');
+                    btn.disabled = false;
+                    btn.textContent = 'Run Benchmark';
+                    renderBenchResults(data);
+                }
+            } catch (e) {
+                clearInterval(benchPollTimer);
+                benchPollTimer = null;
+                document.getElementById('benchResults').innerHTML = `<p style="color:var(--error)">Poll error: ${esc(e.message)}</p>`;
+                document.getElementById('benchRunBtn').disabled = false;
+                document.getElementById('benchRunBtn').textContent = 'Run Benchmark';
+            }
+        }, 2000);
+    }
+
+    function renderBenchResults(data) {
+        const el = document.getElementById('benchResults');
+        if (data.status === 'failed') {
+            el.innerHTML = `<p style="color:var(--error)">Benchmark failed: ${esc(data.error || 'Unknown')}</p>`;
+            return;
+        }
+        const results = data.benchmark_results || [];
+        const summary = data.summary || {};
+        let html = `<table class="bench-table"><thead><tr><th>Scenario</th><th>Time</th><th>Provider</th><th>Status</th></tr></thead><tbody>`;
+        results.forEach(r => {
+            const status = r.success ? '<span style="color:var(--success)">Pass</span>' : '<span style="color:var(--error)">Fail</span>';
+            html += `<tr><td>${esc(r.scenario)}</td><td>${r.response_time_ms.toFixed(0)}ms</td><td>${esc(r.provider)}</td><td>${status}</td></tr>`;
+        });
+        html += `</tbody></table>`;
+        html += `<div class="bench-summary">`;
+        html += `<div class="stat">Total: <strong>${(summary.total_time_ms / 1000).toFixed(1)}s</strong></div>`;
+        html += `<div class="stat">Avg: <strong>${summary.average_response_time_ms?.toFixed(0) || '?'}ms</strong></div>`;
+        html += `<div class="stat">Pass: <strong>${summary.successful_tests || 0}/${summary.total_tests || 0}</strong></div>`;
+        html += `</div>`;
+        el.innerHTML = html;
+    }
+
+    // ── Tool Audit & Policies ──
+    async function loadToolAudit() {
+        const el = document.getElementById('toolAuditLog');
+        el.innerHTML = '<span style="color:var(--text-muted)">Loading...</span>';
+        try {
+            const data = await apiFetch('/api/v1/tools/audit?limit=50');
+            const entries = data.entries || [];
+            if (!entries.length) { el.innerHTML = '<span style="color:var(--text-muted)">No audit entries</span>'; return; }
+            el.innerHTML = entries.map(e => {
+                const status = e.allowed !== false ? 'allowed' : 'denied';
+                return `<div class="audit-entry">
+                    <span class="audit-tool-name">${esc(e.tool_name || e.tool || '?')}</span>
+                    <span class="audit-status ${status}">${status}</span>
+                    ${e.timestamp ? `<span class="audit-timestamp">${esc(String(e.timestamp).slice(0,19))}</span>` : ''}
+                    ${e.user_id ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px;">User: ${esc(e.user_id)}</div>` : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            el.innerHTML = `<span style="color:var(--error)">Error: ${esc(e.message)}</span>`;
+        }
+    }
+
+    async function loadToolPolicies() {
+        const el = document.getElementById('toolPolicies');
+        try {
+            const data = await apiFetch('/api/v1/tools/policies');
+            const policies = data.policies || [];
+            if (!policies.length) { el.innerHTML = '<span style="color:var(--text-muted)">No policies configured</span>'; return; }
+            el.innerHTML = policies.map(p => `<div class="policy-item">
+                <strong>${esc(p.tool || p.name || '?')}</strong>
+                ${p.action ? ` &mdash; ${esc(p.action)}` : ''}
+                ${p.description ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">${esc(p.description)}</div>` : ''}
+            </div>`).join('');
+        } catch (e) {
+            el.innerHTML = `<span style="color:var(--text-muted)">No policies available</span>`;
+        }
+    }
+
+    // ── MCP Management ──
+    function openMCPAddModal() { document.getElementById('mcpAddModal').classList.add('open'); document.getElementById('mcpName').focus(); }
+    function closeMCPAddModal() { document.getElementById('mcpAddModal').classList.remove('open'); }
+
+    async function addMCPServer() {
+        const name = document.getElementById('mcpName').value.trim();
+        if (!name) { alert('Server name is required'); return; }
+        const transport = document.getElementById('mcpTransport').value;
+        const command = document.getElementById('mcpCommand').value.trim() || null;
+        const argsStr = document.getElementById('mcpArgs').value.trim();
+        const args = argsStr ? argsStr.split(',').map(a => a.trim()) : [];
+        const url = document.getElementById('mcpUrl').value.trim() || null;
+        const timeout = parseFloat(document.getElementById('mcpTimeout').value) || 30;
+
+        closeMCPAddModal();
+        addMsg('system', `Connecting MCP server "${name}"...`);
+        try {
+            const data = await apiFetch('/api/v1/mcp/servers', {
+                method: 'POST',
+                body: JSON.stringify({ name, transport, command, args, url, timeout, enabled: true, env: {} })
+            });
+            if (data.success) {
+                addMsg('system', `MCP server "${name}" connected.`);
+                renderMCP(data.servers || []);
+                // Refresh MCP tools count
+                try {
+                    const t = await apiFetch('/api/v1/mcp/tools');
+                    document.getElementById('mMcpTools').textContent = t.count || 0;
+                } catch (_) {}
+            }
+        } catch (e) { addMsg('system', `MCP connect failed: ${e.message}`); }
+        // Clear form
+        document.getElementById('mcpName').value = '';
+        document.getElementById('mcpCommand').value = '';
+        document.getElementById('mcpArgs').value = '';
+        document.getElementById('mcpUrl').value = '';
+    }
+
+    async function removeMCPServer(serverName) {
+        if (!confirm(`Remove MCP server "${serverName}"?`)) return;
+        try {
+            const data = await apiFetch(`/api/v1/mcp/servers/${encodeURIComponent(serverName)}`, { method: 'DELETE' });
+            if (data.success) {
+                addMsg('system', `MCP server "${serverName}" removed.`);
+                // Refresh MCP list
+                const m = await apiFetch('/api/v1/mcp/servers');
+                renderMCP(m.servers || []);
+                const t = await apiFetch('/api/v1/mcp/tools');
+                document.getElementById('mMcpTools').textContent = t.count || 0;
+            }
+        } catch (e) { addMsg('system', `Remove MCP server failed: ${e.message}`); }
+    }
+
+    // ── Code Execution ──
+    function openCodeExecModal() { document.getElementById('codeExecModal').classList.add('open'); document.getElementById('codeExecInput').focus(); }
+    function closeCodeExecModal() { document.getElementById('codeExecModal').classList.remove('open'); document.getElementById('codeExecOutput').innerHTML = ''; }
+
+    async function runCodeExec() {
+        const code = document.getElementById('codeExecInput').value;
+        if (!code.trim()) return;
+        const language = document.getElementById('codeExecLang').value;
+        const btn = document.getElementById('codeExecRunBtn');
+        const outEl = document.getElementById('codeExecOutput');
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+        outEl.innerHTML = '';
+        try {
+            const data = await apiFetch('/api/v1/execute-code', {
+                method: 'POST',
+                body: JSON.stringify({ code, language })
+            });
+            const hasErr = data.error || data.stderr;
+            const output = data.output || data.stdout || data.result || '';
+            const errOutput = data.error || data.stderr || '';
+            let html = '';
+            if (output) html += `<div class="code-output-box success">${esc(String(output))}</div>`;
+            if (errOutput) html += `<div class="code-output-box error">${esc(String(errOutput))}</div>`;
+            if (!output && !errOutput) html = `<div class="code-output-box success">Execution completed (no output)</div>`;
+            if (data.execution_time) html += `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:6px;">Execution time: ${data.execution_time.toFixed(2)}s</div>`;
+            outEl.innerHTML = html;
+        } catch (e) {
+            outEl.innerHTML = `<div class="code-output-box error">${esc(e.message)}</div>`;
+        }
+        btn.disabled = false;
+        btn.textContent = 'Run';
+    }
+
+    // ── Vision Analysis ──
+    function openVisionModal() { document.getElementById('visionModal').classList.add('open'); document.getElementById('visionFileInput').value = ''; document.getElementById('visionFileInput').focus(); }
+    function closeVisionModal() { document.getElementById('visionModal').classList.remove('open'); }
+
+    async function runVisionAnalysis() {
+        const fileInput = document.getElementById('visionFileInput');
+        const file = fileInput.files[0];
+        if (!file) { alert('Please select an image file.'); return; }
+        const prompt = document.getElementById('visionPrompt').value.trim() || 'Describe this image in detail.';
+        const btn = document.getElementById('visionRunBtn');
+        btn.disabled = true;
+        btn.textContent = 'Analyzing...';
+        closeVisionModal();
+
+        addMsg('user', `Vision analysis: ${file.name} — "${prompt}"`);
+        showTyping();
+        try {
+            const form = new FormData();
+            form.append('file', file);
+            const headers = {};
+            if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+            const r = await fetch(`${API_BASE}/api/v1/vision/analyze?prompt=${encodeURIComponent(prompt)}`, {
+                method: 'POST', headers, body: form
+            });
+            if (!r.ok) throw new Error(`Vision analysis failed: ${r.status}`);
+            const data = await r.json();
+            hideTyping();
+            if (data.success) {
+                addMsg('assistant', data.description || 'Analysis complete.', {
+                    provider: data.provider || 'vision',
+                    ai_description: data.description
+                });
+            } else {
+                addMsg('assistant', `Vision analysis failed: ${data.error || 'Unknown error'}`, { provider: 'error' });
+            }
+        } catch (e) {
+            hideTyping();
+            addMsg('assistant', `Vision error: ${e.message}`, { provider: 'error' });
+        }
+        btn.disabled = false;
+        btn.textContent = 'Analyze';
+        fileInput.value = '';
+    }
+
+    // ── Conversation History ──
+    function openHistoryPanel() {
+        document.getElementById('historyPanel').classList.add('open');
+        document.getElementById('historyTitle').textContent = 'Conversation History';
+        loadConversationHistory();
+    }
+    function closeHistoryPanel() { document.getElementById('historyPanel').classList.remove('open'); }
+
+    async function loadConversationHistory() {
+        const body = document.getElementById('historyBody');
+        if (!sessionId) {
+            body.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">No active session. Send a message first.</p>';
+            return;
+        }
+        body.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+        try {
+            const data = await apiFetch(`/api/v1/conversations/${encodeURIComponent(sessionId)}/history?limit=100`);
+            const messages = data.messages || data.history || [];
+            if (!messages.length) {
+                body.innerHTML = '<p style="color:var(--text-muted)">No messages in history.</p>';
+                return;
+            }
+            body.innerHTML = messages.map(m => {
+                const role = m.role || 'system';
+                const content = m.content || m.message || '';
+                const cls = role === 'user' ? 'user-msg' : role === 'assistant' ? 'assistant-msg' : 'system-msg';
+                return `<div class="history-msg ${cls}">
+                    <div class="history-role">${esc(role)}</div>
+                    <div>${esc(content).replace(/\n/g, '<br>')}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            body.innerHTML = `<p style="color:var(--error)">Error: ${esc(e.message)}</p>`;
+        }
+    }
+
+    // ── Server-side Export ──
+    async function exportServerSide(format) {
+        format = format || 'json';
+        if (!sessionId) { addMsg('system', 'No active session to export.'); return; }
+        try {
+            const data = await apiFetch(`/api/v1/conversations/${encodeURIComponent(sessionId)}/export?format=${format}`, { method: 'POST' });
+            if (data.error) { addMsg('system', `Export failed: ${data.error}`); return; }
+            // Download the result
+            const content = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            const ext = format === 'markdown' ? 'md' : 'json';
+            const blob = new Blob([content], { type: format === 'markdown' ? 'text/markdown' : 'application/json' });
+            const a = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            a.href = url;
+            a.download = `conversation_${sessionId}_${Date.now()}.${ext}`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            addMsg('system', `Conversation exported as ${format.toUpperCase()}.`);
+        } catch (e) { addMsg('system', `Export failed: ${e.message}`); }
+    }
+
+    // ── Conversation Analysis ──
+    function openAnalysisPanel() {
+        if (!sessionId) { addMsg('system', 'No active session to analyze.'); return; }
+        document.getElementById('analysisModal').classList.add('open');
+        loadConversationAnalysis();
+    }
+    function closeAnalysisPanel() { document.getElementById('analysisModal').classList.remove('open'); }
+
+    async function loadConversationAnalysis() {
+        const el = document.getElementById('analysisContent');
+        el.innerHTML = '<p style="color:var(--text-muted)">Analyzing conversation patterns...</p>';
+        try {
+            const data = await apiFetch(`/api/v1/conversations/${encodeURIComponent(sessionId)}/analysis`);
+            let html = '';
+
+            // Render analysis data dynamically
+            if (data.message_count !== undefined) {
+                html += `<div class="analysis-card"><h4>Messages</h4><p>Total: ${data.message_count || 0}</p>`;
+                if (data.user_messages !== undefined) html += `<p>User: ${data.user_messages} | Assistant: ${data.assistant_messages || 0}</p>`;
+                html += `</div>`;
+            }
+            if (data.topics && data.topics.length) {
+                html += `<div class="analysis-card"><h4>Topics Discussed</h4>`;
+                data.topics.forEach(t => { html += `<p>${esc(typeof t === 'string' ? t : t.name || JSON.stringify(t))}</p>`; });
+                html += `</div>`;
+            }
+            if (data.sentiment !== undefined) {
+                const score = typeof data.sentiment === 'number' ? data.sentiment : (data.sentiment?.score || 0);
+                const pct = Math.max(0, Math.min(100, (score + 1) * 50));
+                html += `<div class="analysis-card"><h4>Sentiment</h4>
+                    <p>Score: ${typeof score === 'number' ? score.toFixed(2) : score}</p>
+                    <div class="analysis-bar"><div class="analysis-bar-fill" style="width:${pct}%"></div></div></div>`;
+            }
+            if (data.complexity !== undefined) {
+                html += `<div class="analysis-card"><h4>Complexity</h4><p>${esc(JSON.stringify(data.complexity))}</p></div>`;
+            }
+            if (data.summary) {
+                html += `<div class="analysis-card"><h4>Summary</h4><p>${esc(data.summary)}</p></div>`;
+            }
+
+            // Fallback: dump any other keys
+            const rendered = new Set(['message_count', 'user_messages', 'assistant_messages', 'topics', 'sentiment', 'complexity', 'summary', 'success', 'error']);
+            const extra = Object.keys(data).filter(k => !rendered.has(k));
+            if (extra.length && !html) {
+                html += `<div class="analysis-card"><h4>Analysis Results</h4>`;
+                extra.forEach(k => { html += `<p><strong>${esc(k)}:</strong> ${esc(JSON.stringify(data[k]))}</p>`; });
+                html += `</div>`;
+            } else if (extra.length) {
+                html += `<div class="analysis-card"><h4>Additional Data</h4>`;
+                extra.forEach(k => { html += `<p><strong>${esc(k)}:</strong> ${esc(JSON.stringify(data[k]))}</p>`; });
+                html += `</div>`;
+            }
+
+            if (!html) html = '<p style="color:var(--text-muted)">No analysis data available.</p>';
+            el.innerHTML = html;
+        } catch (e) {
+            el.innerHTML = `<p style="color:var(--error)">Analysis failed: ${esc(e.message)}</p>`;
+        }
+    }
+
+    // ── File Content Preview ──
+    async function openFilePreview(fileId, fileName) {
+        document.getElementById('filePreviewModal').classList.add('open');
+        document.getElementById('filePreviewTitle').textContent = fileName || 'File Preview';
+        document.getElementById('filePreviewContent').textContent = 'Loading...';
+        document.getElementById('filePreviewMeta').textContent = '';
+        try {
+            const sid = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+            const data = await apiFetch(`/api/v1/project/files/${encodeURIComponent(fileId)}/content${sid}`);
+            const preview = data.preview || '(No content available)';
+            document.getElementById('filePreviewContent').textContent = preview;
+            const parts = [];
+            if (data.indexed_chunks) parts.push(`${data.indexed_chunks} chunks indexed`);
+            if (data.status) parts.push(`Status: ${data.status}`);
+            document.getElementById('filePreviewMeta').textContent = parts.join(' | ');
+        } catch (e) {
+            document.getElementById('filePreviewContent').textContent = `Error: ${e.message}`;
+        }
+    }
+    function closeFilePreview() { document.getElementById('filePreviewModal').classList.remove('open'); }
+
+    // ── API Info ──
+    async function loadApiInfo() {
+        try { return await apiFetch('/api'); } catch (_) { return null; }
+    }
+
+    // ── Boot ──
+    document.addEventListener('DOMContentLoaded', () => {
+        // Restore theme
+        const savedTheme = localStorage.getItem('na-theme');
+        if (savedTheme === 'light') { document.documentElement.setAttribute('data-theme', 'light'); document.getElementById('themeBtn').textContent = '\u2600'; }
+
+        // Restore sidebar state
+        if (localStorage.getItem('na-sidebar-collapsed') === 'true') {
+            document.querySelector('.app').classList.add('sidebar-collapsed');
+        }
+
+        // Check if auth is required
+        fetch(`${API_BASE}/health`).then(r => {
+            if (r.ok) {
+                // Server up — try without auth first
+                r.json().then(d => {
+                    if (d.status === 'healthy') {
+                        // Check if auth is actually needed by trying a protected endpoint
+                        fetch(`${API_BASE}/api/v1/status`).then(sr => {
+                            if (sr.ok) { skipLogin(); } // No auth needed
+                            // else show login form (default)
+                        }).catch(() => {});
+                    }
+                });
+            }
+        }).catch(() => {
+            // Server down — show login anyway, initApp will show offline
+        });
+
+        setTimeout(() => {
+            if (!document.getElementById('loginOverlay').classList.contains('hidden')) {
+                // Still showing login after 3s — server might be unreachable
+            }
+        }, 3000);
+    });
+    </script>
+</body>
+</html>
