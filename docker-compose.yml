@@ -4,15 +4,15 @@ services:
     container_name: banc-mongodb
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: bancadmin
-      MONGO_INITDB_ROOT_PASSWORD: BancMongo2026Secure!
-      MONGO_INITDB_DATABASE: banc_of_el
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-bancadmin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-banc_of_el}
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
       - ./backend/database/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"
     networks:
       - banc-network
     command: mongod --auth
@@ -28,9 +28,9 @@ services:
     container_name: banc-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: opendoor
-      POSTGRES_PASSWORD: OpenDoor2026Secure!
-      POSTGRES_DB: opendoor_deals
+      POSTGRES_USER: ${POSTGRES_USER:-opendoor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-opendoor_deals}
       POSTGRES_MULTIPLE_DATABASES: opendoor_profiles,opendoor_network
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -39,11 +39,11 @@ services:
       - ./backend/network-service/database/migrations:/docker-entrypoint-initdb.d/03-network:ro
       - ./backend/database/create-databases.sh:/docker-entrypoint-initdb.d/00-create-databases.sh:ro
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     networks:
       - banc-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U opendoor -d opendoor_deals"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opendoor} -d ${POSTGRES_DB:-opendoor_deals}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -53,11 +53,11 @@ services:
     image: redis:7-alpine
     container_name: banc-redis
     restart: unless-stopped
-    command: redis-server --requirepass BancRedis2026Key!
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     networks:
       - banc-network
 
@@ -66,14 +66,18 @@ services:
     container_name: banc-api
     restart: unless-stopped
     environment:
-      MONGODB_URI: mongodb://bancapp:BancApp2026Pass!@banc-mongodb:27017/banc_of_el?authSource=admin
-      REDIS_URL: redis://:BancRedis2026Key!@banc-redis:6379
-      JWT_SECRET: 4a555606b0fc7e559747002426394091b33899def47103587e4334344d88abfc
-      SMTP_HOST: smtp.sendgrid.net
-      SMTP_PORT: 587
-      SMTP_USER: apikey
+      MONGODB_URI: mongodb://${MONGO_APP_USER:-bancapp}:${MONGO_APP_PASSWORD:?Set MONGO_APP_PASSWORD in .env}@banc-mongodb:27017/${MONGO_DB:-banc_of_el}?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD}@banc-redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      SMTP_HOST: ${SMTP_HOST:-smtp.sendgrid.net}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-apikey}
       SMTP_PASS: ${SENDGRID_API_KEY:-changeme}
-      EMAIL_FROM: admin@banc-of-el-trust-international.org
+      EMAIL_FROM: ${EMAIL_FROM:-admin@banc-of-el-trust-international.org}
+      CLIENT_URL: ${CLIENT_URL:-https://banc-of-el-trust-international.org}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://banc-of-el-trust-international.org}
+      NODE_ENV: ${NODE_ENV:-production}
       TRUST_PROXY: 'true'
     ports:
       - "5000:5000"
@@ -85,13 +89,28 @@ services:
     depends_on:
       banc-mongodb:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5000/health', r => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   neural-assistant:
     build: ./neural-assistant
     container_name: neural-assistant
     restart: unless-stopped
-    env_file:
-      - ./neural-assistant/.env
+    environment:
+      NEURAL_ASSISTANT_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      AUTH_REQUIRED: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://banc-of-el-trust-international.org}
+      JWT_SECRET: ${NEURAL_JWT_SECRET:-${JWT_SECRET}}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LOG_FILE: none
+      LOCAL_LLM_ENABLED: "true"
+      LOCAL_LLM_MODEL: llama-3.2-1b
     volumes:
       - ./neural-assistant:/app
     networks:
@@ -108,8 +127,8 @@ services:
     container_name: profile-service
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://opendoor:OpenDoor2026Secure!@banc-postgres:5432/opendoor_profiles
-      ALLOWED_ORIGINS: "http://localhost:3000,https://claude.ai,https://banc-of-el-trust-international.org,http://76.13.24.188"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-opendoor}:${POSTGRES_PASSWORD}@banc-postgres:5432/opendoor_profiles
+      ALLOWED_ORIGINS: ${CORS_ORIGINS:-https://banc-of-el-trust-international.org}
       UPLOAD_DIR: /var/opendoor/uploads/profiles
       PROFILE_PORT: "8004"
     ports:
@@ -127,8 +146,8 @@ services:
     container_name: network-service
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://opendoor:OpenDoor2026Secure!@banc-postgres:5432/opendoor_network
-      ALLOWED_ORIGINS: "http://localhost:3000,https://claude.ai,https://banc-of-el-trust-international.org,http://76.13.24.188"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-opendoor}:${POSTGRES_PASSWORD}@banc-postgres:5432/opendoor_network
+      ALLOWED_ORIGINS: ${CORS_ORIGINS:-https://banc-of-el-trust-international.org}
       UPLOAD_DIR: /var/opendoor/uploads/posts
       NETWORK_PORT: "8005"
     ports:
@@ -155,11 +174,6 @@ services:
       LADDER_CORS_ORIGINS: "${LADDER_CORS_ORIGINS:-https://banc-of-el-trust-international.org}"
       GUNICORN_WORKERS: "${GUNICORN_WORKERS:-2}"
       GUNICORN_TIMEOUT: "${GUNICORN_TIMEOUT:-60}"
-      # Schwab broker (set these when OAuth is configured)
-      # SCHWAB_APP_KEY: "${SCHWAB_APP_KEY:-}"
-      # SCHWAB_APP_SECRET: "${SCHWAB_APP_SECRET:-}"
-      # SCHWAB_CALLBACK_URL: "${SCHWAB_CALLBACK_URL:-https://127.0.0.1}"
-      # SCHWAB_TOKEN_PATH: "/var/lib/ladderbot/schwab_token.json"
     ports:
       - "127.0.0.1:5050:5000"
     volumes:

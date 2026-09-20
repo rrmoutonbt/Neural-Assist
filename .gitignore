@@ -1,0 +1,26 @@
+# Environment files with secrets
+.env
+backend/.env
+neural-assistant/.env
+
+# Dependencies
+node_modules/
+backend/node_modules/
+.venv/
+backend/.venv/
+__pycache__/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+backup-logs/
+
+# Local settings
+.claude/settings.local.json
