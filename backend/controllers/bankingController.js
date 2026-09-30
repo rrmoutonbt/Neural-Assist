@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Account = require('../models/Account');
 const Transaction = require('../models/Transaction');
 const { seedUserData } = require('../services/seedService');
@@ -105,6 +106,75 @@ exports.createAccount = async (req, res) => {
   }
 };
 
+exports.updateAccount = async (req, res) => {
+  try {
+    const { name, type } = req.body;
+    const account = await Account.findOne({ _id: req.params.id, userId: req.user._id });
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    if (name) account.name = name;
+    if (type) {
+      const validTypes = ['checking', 'savings', 'investment', 'crypto_linked'];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ success: false, message: 'Invalid account type' });
+      }
+      account.type = type;
+      account.interestRate = type === 'savings' ? 4.25 : 0;
+    }
+
+    await account.save();
+
+    res.json({
+      success: true,
+      message: 'Account updated',
+      data: {
+        account: {
+          id: account._id,
+          name: account.name,
+          type: account.type,
+          balance: account.balance,
+          currency: account.currency,
+          status: account.status,
+          accountNumber: account.getMaskedNumber(),
+          interestRate: account.interestRate,
+          createdAt: account.createdAt
+        }
+      }
+    });
+  } catch (error) {
+    logger.error('updateAccount error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update account' });
+  }
+};
+
+exports.deleteAccount = async (req, res) => {
+  try {
+    const account = await Account.findOne({ _id: req.params.id, userId: req.user._id });
+
+    if (!account) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    if (account.balance > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete account with remaining balance. Transfer or withdraw funds first.' });
+    }
+
+    await Transaction.deleteMany({ accountId: account._id });
+    await Account.deleteOne({ _id: account._id });
+
+    res.json({
+      success: true,
+      message: `Account "${account.name}" has been deleted`
+    });
+  } catch (error) {
+    logger.error('deleteAccount error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete account' });
+  }
+};
+
 exports.getTransactions = async (req, res) => {
   try {
     const { accountId, type, status, page = 1, limit = 50 } = req.query;
@@ -169,82 +239,94 @@ exports.getTransactions = async (req, res) => {
 };
 
 exports.transfer = async (req, res) => {
+  const { fromAccountId, toAccountId, amount, memo } = req.body;
+
+  if (!fromAccountId || !toAccountId || !amount) {
+    return res.status(400).json({ success: false, message: 'From account, to account, and amount are required' });
+  }
+
+  const numAmount = Number(amount);
+  if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 1e9) {
+    return res.status(400).json({ success: false, message: 'Amount must be a positive number up to 1 billion' });
+  }
+
+  if (fromAccountId === toAccountId) {
+    return res.status(400).json({ success: false, message: 'Cannot transfer to the same account' });
+  }
+
+  // Use a MongoDB session for atomic transfer
+  const session = await mongoose.startSession();
   try {
-    const { fromAccountId, toAccountId, amount, memo } = req.body;
+    session.startTransaction();
 
-    if (!fromAccountId || !toAccountId || !amount) {
-      return res.status(400).json({ success: false, message: 'From account, to account, and amount are required' });
-    }
-
-    if (amount <= 0) {
-      return res.status(400).json({ success: false, message: 'Amount must be positive' });
-    }
-
-    if (fromAccountId === toAccountId) {
-      return res.status(400).json({ success: false, message: 'Cannot transfer to the same account' });
-    }
-
-    const fromAccount = await Account.findOne({ _id: fromAccountId, userId: req.user._id });
-    const toAccount = await Account.findOne({ _id: toAccountId, userId: req.user._id });
+    const fromAccount = await Account.findOne({ _id: fromAccountId, userId: req.user._id }).session(session);
+    const toAccount = await Account.findOne({ _id: toAccountId, userId: req.user._id }).session(session);
 
     if (!fromAccount || !toAccount) {
+      await session.abortTransaction();
       return res.status(404).json({ success: false, message: 'Account not found' });
     }
 
-    if (fromAccount.balance < amount) {
+    if (fromAccount.balance < numAmount) {
+      await session.abortTransaction();
       return res.status(400).json({ success: false, message: 'Insufficient funds' });
     }
 
-    // Update balances
-    fromAccount.balance -= amount;
-    toAccount.balance += amount;
-    await fromAccount.save();
-    await toAccount.save();
+    // Update balances atomically within the transaction
+    fromAccount.balance -= numAmount;
+    toAccount.balance += numAmount;
+    await fromAccount.save({ session });
+    await toAccount.save({ session });
 
     const ref = `TRF-${Date.now().toString().slice(-6)}`;
     const description = memo || `Transfer to ${toAccount.name}`;
 
     // Create debit transaction
-    await Transaction.create({
+    await Transaction.create([{
       userId: req.user._id,
       accountId: fromAccountId,
       type: 'transfer',
-      amount: -amount,
+      amount: -numAmount,
       status: 'completed',
       description,
       category: 'transfer',
       reference: ref,
       balanceAfter: fromAccount.balance,
       relatedAccountId: toAccountId
-    });
+    }], { session });
 
     // Create credit transaction
-    await Transaction.create({
+    await Transaction.create([{
       userId: req.user._id,
       accountId: toAccountId,
       type: 'transfer',
-      amount: amount,
+      amount: numAmount,
       status: 'completed',
       description: memo || `Transfer from ${fromAccount.name}`,
       category: 'transfer',
       reference: ref,
       balanceAfter: toAccount.balance,
       relatedAccountId: fromAccountId
-    });
+    }], { session });
+
+    await session.commitTransaction();
 
     res.json({
       success: true,
       message: 'Transfer completed',
       data: {
         reference: ref,
-        amount,
+        amount: numAmount,
         from: { id: fromAccount._id, name: fromAccount.name, balance: fromAccount.balance },
         to: { id: toAccount._id, name: toAccount.name, balance: toAccount.balance }
       }
     });
   } catch (error) {
+    await session.abortTransaction();
     logger.error('transfer error:', error);
     res.status(500).json({ success: false, message: 'Transfer failed' });
+  } finally {
+    session.endSession();
   }
 };
 

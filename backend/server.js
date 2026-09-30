@@ -1,10 +1,21 @@
 require('dotenv').config();
+let Sentry;
+try { Sentry = require('@sentry/node'); } catch { Sentry = null; }
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const logger = require('./services/logger');
+
+// Sentry error tracking — set SENTRY_DSN in .env to enable
+if (Sentry && process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV || 'development',
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.2 : 1.0,
+  });
+}
 const authRoutes = require('./routes/auth');
 const bankingRoutes = require('./routes/banking');
 const kpisRoutes = require('./routes/kpis');
@@ -20,6 +31,11 @@ const app = express();
 // Trust proxy - use 1 for single nginx proxy
 app.set('trust proxy', 1);
 
+// Sentry request handler (must be first middleware)
+if (Sentry && process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.requestHandler());
+}
+
 // Security middleware
 app.use(helmet());
 const corsOrigins = (process.env.CORS_ORIGINS || 'https://banc-of-el-trust-international.org')
@@ -30,35 +46,51 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting with trust proxy validation disabled
+// Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  validate: { trustProxy: false }
+  max: 100
 });
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  validate: { trustProxy: false }
+  message: { success: false, message: 'Too many login attempts, please try again later' }
 });
 
 const authSensitiveLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
-  message: { success: false, message: 'Too many attempts, please try again later' },
-  validate: { trustProxy: false }
+  message: { success: false, message: 'Too many attempts, please try again later' }
+});
+
+const financialLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: { success: false, message: 'Too many financial operations, please try again later' }
+});
+
+const reportLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: { success: false, message: 'Too many report requests, please try again later' }
 });
 
 app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth/register', authSensitiveLimiter);
 app.use('/api/auth/forgot-password', authSensitiveLimiter);
 app.use('/api/auth/reset-password', authSensitiveLimiter);
+app.use('/api/banking/transfers', financialLimiter);
+app.use('/api/banking/reset', authSensitiveLimiter);
+app.use('/api/wallet/send', financialLimiter);
+app.use('/api/trading/orders', financialLimiter);
+app.use('/api/reports', reportLimiter);
+app.use('/api/admin', financialLimiter);
 app.use(limiter);
 
-// Body parser
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parser with size limits
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Health check
 app.get('/health', (req, res) => {
@@ -124,6 +156,11 @@ app.use('/api/trading-engine', async (req, res) => {
   }
 });
 
+// Sentry error handler (must be before custom error handler)
+if (Sentry && process.env.SENTRY_DSN) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
 // Error handler
 app.use((err, req, res, next) => {
   logger.error('Unhandled error', {
@@ -135,12 +172,35 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => logger.info('MongoDB connected'))
-  .catch(err => logger.error('MongoDB connection error', { message: err.message }));
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, '0.0.0.0', () => {
-  logger.info(`API running on port ${PORT}`);
+// Unhandled rejection / uncaught exception handlers
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled Rejection', { message: reason?.message || String(reason) });
+  process.exit(1);
 });
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception', { message: err.message });
+  process.exit(1);
+});
+
+// Validate required secrets at startup
+const requiredEnv = ['JWT_SECRET', 'MONGODB_URI'];
+for (const key of requiredEnv) {
+  if (!process.env[key] || process.env[key] === 'changeme' || process.env[key] === 'CHANGE_ME_IN_PRODUCTION') {
+    logger.error(`FATAL: ${key} is not set or uses a placeholder value. Refusing to start.`);
+    process.exit(1);
+  }
+}
+
+// MongoDB connection — block server start on failure
+const PORT = process.env.PORT || 5000;
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    logger.info('MongoDB connected');
+    app.listen(PORT, '0.0.0.0', () => {
+      logger.info(`API running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    logger.error('MongoDB connection failed — exiting', { message: err.message });
+    process.exit(1);
+  });

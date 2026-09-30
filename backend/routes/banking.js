@@ -11,11 +11,18 @@ router.use(protect);
 router.get('/accounts', bankingController.getAccounts);
 router.get('/accounts/:id', bankingController.getAccount);
 router.post('/accounts', bankingController.createAccount);
+router.put('/accounts/:id', bankingController.updateAccount);
+router.delete('/accounts/:id', bankingController.deleteAccount);
 router.post('/accounts/:id/deposit', bankingController.deposit);
 router.post('/accounts/:id/withdraw', bankingController.withdraw);
 
-// Reset all accounts to zero
-router.post('/reset', bankingController.resetAccounts);
+// Reset all accounts to zero — admin only
+router.post('/reset', (req, res, next) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Admin access required' });
+  }
+  next();
+}, bankingController.resetAccounts);
 
 // Transactions
 router.get('/transactions', validatePagination, validateTransactionFilters, bankingController.getTransactions);

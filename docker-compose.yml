@@ -60,6 +60,11 @@ services:
       - "127.0.0.1:6379:6379"
     networks:
       - banc-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   banc-api:
     build: ./backend
@@ -80,7 +85,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       TRUST_PROXY: 'true'
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./backend:/app
       - /app/node_modules
@@ -132,7 +137,7 @@ services:
       UPLOAD_DIR: /var/opendoor/uploads/profiles
       PROFILE_PORT: "8004"
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     volumes:
       - profile_uploads:/var/opendoor/uploads/profiles
     networks:
@@ -140,6 +145,12 @@ services:
     depends_on:
       banc-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   network-service:
     build: ./backend/network-service
@@ -151,7 +162,7 @@ services:
       UPLOAD_DIR: /var/opendoor/uploads/posts
       NETWORK_PORT: "8005"
     ports:
-      - "8005:8005"
+      - "127.0.0.1:8005:8005"
     volumes:
       - post_uploads:/var/opendoor/uploads/posts
     networks:
@@ -159,6 +170,12 @@ services:
     depends_on:
       banc-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8005/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   ladderbot:
     build:

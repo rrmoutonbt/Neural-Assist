@@ -17,7 +17,7 @@ router.use((req, res, next) => {
 
 // Compliance
 router.get('/compliance', adminController.getCompliance);
-router.get('/compliance/flagged', adminController.getCompliance);
+router.get('/compliance/flagged', adminController.getFlaggedTransactions || adminController.getCompliance);
 router.put('/compliance/flagged/:id', adminController.reviewFlaggedTransaction);
 router.get('/compliance/kyc', adminController.getKYCQueue);
 router.get('/compliance/kyc/:id', adminController.getKYCApplication);
