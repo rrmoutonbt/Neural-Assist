@@ -7,6 +7,8 @@ export type { LadderCandidateRow } from "./LadderTable";
 export { MonthlyProfile } from "./MonthlyProfile";
 export { SummaryStrip } from "./SummaryStrip";
 export { LadderDashboard } from "./LadderDashboard";
+export { OptionsCompounder } from "./OptionsCompounder";
+export type { OptionsCompounderProps } from "./OptionsCompounder";
 export type { LadderDashboardProps } from "./LadderDashboard";
 export { useLadderOverlay, tradesToMarkers, tradesToPriceLines } from "./useLadderOverlay";
 export type { LadderOverlay, UseLadderOverlayOptions } from "./useLadderOverlay";

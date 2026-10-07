@@ -16,6 +16,7 @@ import { CycleProgress } from "./CycleProgress";
 import { LadderOHLCVChart } from "./LadderOHLCVChart";
 import { LadderTable, type LadderCandidateRow } from "./LadderTable";
 import { MonthlyProfile } from "./MonthlyProfile";
+import { OptionsCompounder } from "./OptionsCompounder";
 import { SummaryStrip } from "./SummaryStrip";
 import { LadderApiClient } from "./api";
 import {
@@ -131,6 +132,11 @@ export const LadderDashboard: React.FC<LadderDashboardProps> = ({
       }}>
         <SectionLabel palette={palette}>Ladder · ranked candidates</SectionLabel>
         <LadderTable candidates={candidates} theme={theme} />
+      </div>
+
+      {/* Options Compounder — reinvestment calculator */}
+      <div style={{ marginTop: 24 }}>
+        <OptionsCompounder theme={theme} />
       </div>
 
       {poll.error && (

@@ -26,7 +26,7 @@ module.exports = {
     path: path.resolve(__dirname, "dist-ladder"),
     filename: isProd ? "ladder.[contenthash].js" : "ladder.js",
     clean: true,
-    publicPath: "/",
+    publicPath: "/ladderbot/",
   },
 
   resolve: {
